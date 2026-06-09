@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", var(--font-sans);
+
+  --color-brand-teal: #0f4c5c;
+  --color-brand-cyan: #0891b2;
+}
+
+@layer utilities {
+  /* Thin custom scrollbar for horizontal reservation grid */
+  .custom-scrollbar::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  /* No print layouts utility */
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+    .print-only {
+      display: block !important;
+    }
+    body {
+      background: white !important;
+      color: black !important;
+    }
+  }
+}
+
+.print-only {
+  display: none;
+}
+
