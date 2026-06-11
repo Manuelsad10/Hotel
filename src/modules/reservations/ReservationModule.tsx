@@ -1,484 +1,602 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.5
- */
-
 import React, { useState } from "react";
-import { Plus, Search, Calendar, BadgeIcon, Eye, Trash2, CalendarX, Sparkles, UserPlus } from "lucide-react";
 import { useHotelStore } from "../../store/hotelStore";
-import { ReservationStatus, ReservationSource, PaymentMethod, ChargeType } from "../../types";
-import { Card, Badge, Button, Input, Select, Modal } from "../../components/ui/design";
-import { ReservationCalendar } from "../../components/shared/ReservationCalendar";
+import { ReservationStatus, RoomStatus, Guest, Reservation, Room } from "../../types";
+import { Badge, Button, Card, Modal, Input, Select, ConfirmDialog } from "../../components/ui/design";
+import { Search, Calendar, Plus, Printer, Trash2, Edit2, Info } from "lucide-react";
 
-interface ReservationModuleProps {
-  onSelectBooking: (id: string) => void;
-  isNewBookingLauncherOpen: boolean;
-  setIsNewBookingLauncherOpen: (open: boolean) => void;
-  preSelectedRoomId?: string;
-  preSelectedDate?: string;
-}
-
-export const ReservationModule: React.FC<ReservationModuleProps> = ({
-  onSelectBooking,
-  isNewBookingLauncherOpen,
-  setIsNewBookingLauncherOpen,
-  preSelectedRoomId = "",
-  preSelectedDate = "",
-}) => {
+export const ReservationModule: React.FC = () => {
   const store = useHotelStore();
   const reservations = store.reservations;
   const guests = store.guests;
   const rooms = store.rooms;
   const roomTypes = store.roomTypes;
 
-  // Search filter list
+  // Search, date filters and paging
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [dateFilter, setDateFilter] = useState("");
 
-  // Reservation Form State
-  const [guestId, setGuestId] = useState(guests[0]?.id || "");
-  const [roomTypeId, setRoomTypeId] = useState(roomTypes[0]?.id || "");
-  const [roomId, setRoomId] = useState(preSelectedRoomId || "");
-  const [checkIn, setCheckIn] = useState(preSelectedDate || new Date().toISOString().split("T")[0]);
-  const [checkOut, setCheckOut] = useState("");
-  const [adults, setAdults] = useState<number>(2);
-  const [children, setChildren] = useState<number>(0);
-  const [requests, setRequests] = useState("");
-  const [source, setSource] = useState<ReservationSource>(ReservationSource.WALK_IN);
-  const [deposit, setDeposit] = useState<number>(100);
+  // Modals
+  const [isNewBookingOpen, setIsNewBookingOpen] = useState(false);
+  const [isEditBookingOpen, setIsEditBookingOpen] = useState(false);
+  const [selectedSlip, setSelectedSlip] = useState<Reservation | null>(null);
+  
+  // Custom cancellation modal state:
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancellingRes, setCancellingRes] = useState<Reservation | null>(null);
+  const [cancelFee, setCancelFee] = useState("0");
 
-  // Group Reservation
-  const [groupName, setGroupName] = useState("");
+  // Custom ConfirmDialog State
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    message: string;
+    confirmText: string;
+    onConfirm: () => void;
+  }>({
+    title: "",
+    message: "",
+    confirmText: "Confirm",
+    onConfirm: () => {},
+  });
 
-  // Create Guest first toggle
-  const [showCreateGuestForm, setShowCreateGuestForm] = useState(false);
+  const triggerConfirmation = (title: string, message: string, confirmText: string, onConfirm: () => void) => {
+    setConfirmConfig({
+      title,
+      message,
+      confirmText,
+      onConfirm,
+    });
+    setIsConfirmOpen(true);
+  };
+
+  // Form states
+  const [isNewGuest, setIsNewGuest] = useState(false);
+  const [guestId, setGuestId] = useState("");
+  // New Guest Inline Form
   const [gName, setGName] = useState("");
-  const [gGender, setGGender] = useState<"Male" | "Female">("Male");
-  const [gNat, setGNat] = useState("Ghanaian");
-  const [gIdType, setGIdType] = useState<"Ghana Card" | "Passport" | "Voter ID" | "Driver's License">("Ghana Card");
-  const [gIdNo, setGIdNo] = useState("");
   const [gPhone, setGPhone] = useState("");
   const [gEmail, setGEmail] = useState("");
-  const [gAddr, setGAddr] = useState("Accra, Ghana");
-  const [gComp, setGComp] = useState("");
+  const [gNationality, setGNationality] = useState("Ghanaian");
+  const [gIdType, setGIdType] = useState("Ghana Card");
+  const [gIdNumber, setGIdNumber] = useState("");
 
-  const handleLaunchModalWithInitialDetails = (rid?: string, date?: string) => {
-    if (rid) {
-      setRoomId(rid);
-      // find room type
-      const targetR = rooms.find(rm => rm.id === rid);
-      if (targetR) setRoomTypeId(targetR.roomTypeId);
-    } else {
-      setRoomId("");
-    }
-    if (date) {
-      setCheckIn(date);
-      // Auto-set checkOut to date + 2 days
-      const d = new Date(date);
-      d.setDate(d.getDate() + 2);
-      setCheckOut(d.toISOString().split("T")[0]);
-    } else {
-      setCheckIn(new Date().toISOString().split("T")[0]);
-      setCheckOut("");
-    }
+  // Booking details Form
+  const [roomId, setRoomId] = useState("");
+  const [checkInDate, setCheckInDate] = useState("2026-06-09");
+  const [checkOutDate, setCheckOutDate] = useState("2026-06-11");
+  const [guestsCount, setGuestsCount] = useState(1);
+  const [specialRequests, setSpecialRequests] = useState("");
+  const [deposit, setDeposit] = useState("0");
 
-    setShowCreateGuestForm(false);
-    setIsNewBookingLauncherOpen(true);
-  };
+  // Edit Booking Form states
+  const [editBookingId, setEditBookingId] = useState("");
 
-  const handleAddGuestFirst = (e: React.FormEvent) => {
+  const handleCreateBooking = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gName.trim() || !gPhone.trim()) {
-      store.addToast("Guest name and contact number required", "error");
-      return;
-    }
 
-    const created = store.addGuest({
-      fullName: gName,
-      gender: gGender as any,
-      nationality: gNat,
-      idType: gIdType,
-      idNumber: gIdNo,
-      phone: gPhone,
-      email: gEmail,
-      address: gAddr,
-      company: gComp || undefined,
-      vip: false,
-      blacklist: false,
-    });
+    let targetGuestId = guestId;
 
-    setGuestId(created.id);
-    setShowCreateGuestForm(false);
-    
-    // reset
-    setGName("");
-    setGPhone("");
-    setGIdNo("");
-  };
-
-  const handleCreateReservation = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!guestId || !checkIn || !checkOut) {
-      store.addToast("Missing crucial booking criteria", "error");
-      return;
-    }
-
-    if (new Date(checkIn) >= new Date(checkOut)) {
-      store.addToast("Check-out date must follow Check-in date", "error");
-      return;
-    }
-
-    // Availability validation check
-    const rId = roomId || undefined;
-    if (rId) {
-      // Look for collision bookings
-      const collisionExists = reservations.some((res) => {
-        if (res.roomId !== rId) return false;
-        if (res.status === ReservationStatus.CANCELLED || res.status === ReservationStatus.NO_SHOW) return false;
-        // overlap check
-        return checkIn < res.checkOutDate && checkOut > res.checkInDate;
-      });
-
-      if (collisionExists) {
-        store.addToast("This target room contains collisions inside the selected nights!", "error");
+    if (isNewGuest) {
+      if (!gName || !gPhone) {
+        store.addToast("Guest name and phone number are required.", "error");
         return;
       }
+      const added = store.addGuest({
+        fullName: gName,
+        phone: gPhone,
+        email: gEmail,
+        nationality: gNationality,
+        idType: gIdType,
+        idNumber: gIdNumber,
+        notes: "",
+        vip: false,
+      });
+      targetGuestId = added.id;
     }
 
-    store.createReservation({
-      guestId,
-      roomTypeId,
-      roomId: rId,
-      checkInDate: checkIn,
-      checkOutDate: checkOut,
-      adults,
-      children,
-      specialRequests: requests || undefined,
-      source,
-      status: ReservationStatus.CONFIRMED,
-      depositAmountPesewas: Math.round(deposit * 100),
-    });
+    if (!targetGuestId) {
+      store.addToast("Please select or register a guest profile.", "error");
+      return;
+    }
 
-    setIsNewBookingLauncherOpen(false);
-    // reset
-    setRequests("");
-    setRoomId("");
+    if (!roomId) {
+      store.addToast("Please select an available room.", "error");
+      return;
+    }
+
+    const payload = {
+      guestId: targetGuestId,
+      roomId,
+      checkInDate,
+      checkOutDate,
+      adults: Number(guestsCount),
+      specialRequests,
+      depositAmountPesewas: parseFloat(deposit || "0") * 100,
+    };
+
+    store.createReservation(payload);
+
+    // Reset forms
+    setIsNewBookingOpen(false);
+    resetForm();
   };
 
-  // Filter lists
-  const filteredReservations = reservations.filter((r) => {
-    const guestObj = guests.find((g) => g.id === r.guestId);
-    const guestName = guestObj?.fullName || "";
+  const resetForm = () => {
+    setIsNewGuest(false);
+    setGuestId("");
+    setGName("");
+    setGPhone("");
+    setGEmail("");
+    setGNationality("Ghanaian");
+    setGIdType("Ghana Card");
+    setGIdNumber("");
+    setRoomId("");
+    setCheckRequests();
+  };
+
+  const setCheckRequests = () => {
+    setSpecialRequests("");
+    setDeposit("0");
+    setGuestsCount(1);
+  };
+
+  const handleOpenEdit = (res: Reservation) => {
+    setEditBookingId(res.id);
+    setGuestId(res.guestId);
+    setRoomId(res.roomId);
+    setCheckInDate(res.checkInDate);
+    setCheckOutDate(res.checkOutDate);
+    setGuestsCount(res.adults);
+    setSpecialRequests(res.specialRequests || "");
+    setDeposit((res.depositAmountPesewas / 100).toString());
+    setIsEditBookingOpen(true);
+  };
+
+  const handleEditBooking = (e: React.FormEvent) => {
+    e.preventDefault();
+    store.editReservation(
+      editBookingId,
+      checkInDate,
+      checkOutDate,
+      roomId,
+      Number(guestsCount),
+      specialRequests
+    );
+    setIsEditBookingOpen(false);
+    resetForm();
+  };
+
+  const getGuestField = (gid: string, field: "name" | "phone" | "id") => {
+    const gst = guests.find((g) => g.id === gid);
+    if (!gst) return "N/A";
+    if (field === "name") return gst.fullName;
+    if (field === "phone") return gst.phone;
+    return gst.idNumber;
+  };
+
+  const getRoomNumber = (rid: string) => {
+    return rooms.find((r) => r.id === rid)?.roomNumber || "Unassigned";
+  };
+
+  // Filter reservations
+  const filteredReservations = reservations.filter((res) => {
+    const guestName = getGuestField(res.guestId, "name").toLowerCase();
     const matchesSearch =
-      guestName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.id.toLowerCase().includes(searchTerm.toLowerCase());
+      guestName.includes(searchTerm.toLowerCase()) ||
+      res.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      getRoomNumber(res.roomId).includes(searchTerm);
 
-    const matchesStatus = statusFilter === "ALL" || r.status === statusFilter;
+    const matchesStatus = statusFilter === "ALL" || res.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    const matchesDate =
+      !dateFilter || res.checkInDate === dateFilter || res.checkOutDate === dateFilter;
+
+    return matchesSearch && matchesStatus && matchesDate;
   });
+
+  const handlePrintSlip = () => {
+    window.print();
+  };
 
   return (
     <div className="space-y-6">
       
-      {/* 1. Custom horizontal calendar timeline section */}
-      <ReservationCalendar
-        onSelectBooking={onSelectBooking}
-        onLaunchNewBooking={handleLaunchModalWithInitialDetails}
-      />
+      {/* Search and Filters panel */}
+      <Card className="p-4 flex flex-col md:flex-row gap-3 items-center justify-between">
+        
+        <div className="flex flex-1 flex-col md:flex-row gap-3 w-full">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-450 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by Guest, Booking Number, Room..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 pr-4 py-2 w-full text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-500 font-medium"
+            />
+          </div>
 
-      {/* 2. Reservations List block */}
-      <Card className="p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-50 pb-3">
-          <h3 className="text-sm font-black uppercase text-slate-800 tracking-wider font-display">
-            Registry Ledger Database
-          </h3>
-
-          <div className="flex flex-wrap items-center gap-2">
-            
-            {/* Search Box */}
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                <Search className="w-4 h-4" />
-              </span>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by code / guest name..."
-                className="pl-9.5 pr-3 py-1.5 text-xs text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-brand-teal transition-colors w-52"
-              />
-            </div>
-
-            {/* Status filters */}
+          <div className="w-full md:w-44">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 outline-none cursor-pointer"
+              className="px-3 py-2 w-full text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none cursor-pointer font-bold uppercase text-slate-700"
             >
               <option value="ALL">All Statuses</option>
-              {Object.values(ReservationStatus).map((st) => (
-                <option key={st} value={st}>
-                  {st}
-                </option>
-              ))}
+              <option value={ReservationStatus.CONFIRMED}>Confirmed Arrival</option>
+              <option value={ReservationStatus.CHECKED_IN}>Checked In</option>
+              <option value={ReservationStatus.CHECKED_OUT}>Checked Out</option>
+              <option value={ReservationStatus.CANCELLED}>Cancelled</option>
             </select>
+          </div>
 
-            {/* Top triggers */}
-            <Button variant="primary" className="py-1.5" onClick={() => handleLaunchModalWithInitialDetails()}>
-              <Plus className="w-4 h-4" /> Add Reservation
-            </Button>
+          <div className="w-full md:w-44">
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="px-3 py-1.5 w-full text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none font-semibold text-slate-700 text-center"
+            />
           </div>
         </div>
 
-        {/* Database table listing */}
-        <div className="w-full overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-slate-100 font-bold text-slate-500 uppercase tracking-wider text-[10px] pb-2">
-                <th className="py-3">Ref ID</th>
-                <th>Guest</th>
-                <th>Room Setup</th>
-                <th>Arrival</th>
-                <th>Departure</th>
-                <th>Source</th>
-                <th>Deposit Details</th>
-                <th>Status</th>
-                <th className="text-right">Configure</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredReservations.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="text-center py-8 text-slate-400 italic bg-slate-50/20 rounded-lg">
-                    No reservations matched active filter criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredReservations.map((r) => {
-                  const guestObj = guests.find((g) => g.id === r.guestId);
-                  const roomTypeObj = roomTypes.find((rt) => rt.id === r.roomTypeId);
-                  const roomObj = rooms.find((rm) => rm.id === r.roomId);
+        <Button variant="primary" onClick={() => setIsNewBookingOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-xs font-bold shrink-0">
+          <Plus className="w-4 h-4" />
+          <span>New Reservation</span>
+        </Button>
 
-                  return (
-                    <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                      <td className="py-3.5 font-mono font-semibold text-slate-800">{r.id}</td>
-                      <td>
-                        <div className="font-bold text-slate-700">{guestObj?.fullName}</div>
-                        <div className="text-[9px] text-slate-400 font-mono mt-0.5">{guestObj?.phone}</div>
-                      </td>
-                      <td>
-                        <span className="font-semibold text-slate-800">{roomTypeObj?.name}</span>
-                        {roomObj && (
-                          <Badge variant="brand" className="ml-1.5 text-[9px]">
-                            Rm {roomObj.roomNumber}
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="font-mono">{new Date(r.checkInDate).toLocaleDateString("en-GB")}</td>
-                      <td className="font-mono">{new Date(r.checkOutDate).toLocaleDateString("en-GB")}</td>
-                      <td className="font-semibold uppercase text-slate-500">{r.source}</td>
-                      <td className="font-mono">₵{(r.depositAmountPesewas / 100).toFixed(2)}</td>
-                      <td>
-                        <Badge
-                          variant={
-                            r.status === ReservationStatus.CHECKED_IN
-                              ? "success"
-                              : r.status === ReservationStatus.CONFIRMED
-                              ? "info"
-                              : r.status === ReservationStatus.CANCELLED
-                              ? "danger"
-                              : "neutral"
-                          }
-                        >
-                          {r.status}
-                        </Badge>
-                      </td>
-                      <td className="text-right">
-                        <Button variant="outline" className="py-1 px-2.5 text-[10px]" onClick={() => onSelectBooking(r.id)}>
-                          Configure
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
       </Card>
 
-      {/* 3. New Reservation launcher modal */}
-      <Modal
-        isOpen={isNewBookingLauncherOpen}
-        onClose={() => setIsNewBookingLauncherOpen(false)}
-        title="Schedule New Reservation Booking"
-        className="max-w-xl"
-        footer={
-          !showCreateGuestForm && (
-            <>
-              <Button variant="outline" onClick={() => setIsNewBookingLauncherOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleCreateReservation}>
-                Confirm Reservation Slip
-              </Button>
-            </>
-          )
-        }
-      >
-        {showCreateGuestForm ? (
-          /* Mini overlay form to create profile inline */
-          <form onSubmit={handleAddGuestFirst} className="space-y-3.5 animate-in slide-in-from-top duration-200">
-            <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-              <span className="text-xs font-bold text-cyan-800 uppercase">Create Guest Profile First</span>
-              <button
-                type="button"
-                onClick={() => setShowCreateGuestForm(false)}
-                className="text-[10px] uppercase font-bold text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                ← Back to Booking
-              </button>
+      {/* Reservation Table */}
+      <Card className="overflow-hidden">
+        <table className="w-full text-left text-xs table-auto">
+          <thead className="bg-slate-50 border-b border-indigo-120 text-slate-500 font-black uppercase tracking-wider text-[10px]">
+            <tr>
+              <th className="px-6 py-3.5">Booking ID</th>
+              <th className="px-6 py-3.5">Guest Name</th>
+              <th className="px-6 py-3.5">Assigned Room</th>
+              <th className="px-6 py-3.5">Stay Interval</th>
+              <th className="px-6 py-3.5">Deposit</th>
+              <th className="px-6 py-3.5">Status</th>
+              <th className="px-6 py-3.5 text-right no-print">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+            {filteredReservations.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-6 py-8 text-center text-slate-400 italic">No reservation records match criteria.</td>
+              </tr>
+            ) : (
+              filteredReservations.map((res) => (
+                <tr key={res.id} className="hover:bg-slate-50/50">
+                  <td className="px-6 py-4 font-bold font-mono text-blue-650 text-blue-600">{res.id}</td>
+                  <td className="px-6 py-4">
+                    <div>
+                      <p className="font-extrabold text-slate-800">{getGuestField(res.guestId, "name")}</p>
+                      <p className="text-[10px] text-slate-500">{getGuestField(res.guestId, "phone")}</p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 font-extrabold">Room {getRoomNumber(res.roomId)}</td>
+                  <td className="px-6 py-4">
+                    <div>
+                      <p className="text-slate-800">{new Date(res.checkInDate).toLocaleDateString("en-GB")}</p>
+                      <p className="text-[10px] text-slate-450 text-slate-400 font-semibold">to {new Date(res.checkOutDate).toLocaleDateString("en-GB")}</p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 font-bold text-slate-600">GHS ₵{(res.depositAmountPesewas / 100).toFixed(2)}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                      res.status === ReservationStatus.CONFIRMED ? "bg-amber-100 text-amber-800 border border-amber-200" :
+                      res.status === ReservationStatus.CHECKED_IN ? "bg-red-100 text-red-800 border border-red-200" :
+                      res.status === ReservationStatus.CHECKED_OUT ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+                      "bg-slate-100 text-slate-700 border border-slate-200"
+                    }`}>
+                      {res.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right no-print">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setSelectedSlip(res)} className="p-1 px-2.5 text-[10px] font-bold">
+                        <Printer className="w-3 h-3 text-slate-500" />
+                        <span>Slip</span>
+                      </Button>
+                      {res.status === ReservationStatus.CONFIRMED && (
+                        <>
+                          <button
+                            onClick={() => handleOpenEdit(res)}
+                            className="p-1 hover:text-blue-500 rounded hover:bg-slate-100 cursor-pointer text-slate-400"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCancellingRes(res);
+                              setCancelFee("0");
+                              setIsCancelModalOpen(true);
+                            }}
+                            className="p-1 hover:text-red-500 rounded hover:bg-slate-100 cursor-pointer text-slate-400"
+                            title="Cancel Booking"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </Card>
+
+      {/* modal - create booking */}
+      <Modal isOpen={isNewBookingOpen} onClose={() => setIsNewBookingOpen(false)} title="Create New Reservation" className="max-w-xl">
+        <form onSubmit={handleCreateBooking} className="space-y-6">
+          
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-250 flex items-center justify-between select-none">
+            <span className="font-bold text-slate-700">Are you booking a NEW guest?</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">Already Registered</span>
+              <input
+                type="checkbox"
+                checked={isNewGuest}
+                onChange={(e) => setIsNewGuest(e.target.checked)}
+                className="w-4 h-4 accent-blue-600 rounded cursor-pointer"
+              />
+              <span className="text-xs text-slate-700 font-bold">Register Inline</span>
             </div>
+          </div>
+
+          {/* Guest selector or nested inline registration */}
+          {!isNewGuest ? (
+            <Select
+              label="Select Existing Guest Profile"
+              value={guestId}
+              onChange={(e) => setGuestId(e.target.value)}
+              options={[{ value: "", label: "-- Search and Match Guest --" }, ...guests.map((g) => ({ value: g.id, label: `${g.fullName} (${g.phone})` }))]}
+            />
+          ) : (
+            <div className="p-4 border border-blue-100 bg-blue-50/10 rounded-xl space-y-3">
+              <span className="text-[10px] font-black uppercase text-blue-600 tracking-wider block">Inline Guest Enrollment</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <Input label="Full Name *" value={gName} onChange={(e) => setGName(e.target.value)} placeholder="Yao Mensah" />
+                <Input label="Phone Number *" value={gPhone} onChange={(e) => setGPhone(e.target.value)} placeholder="+233 24 100 0011" />
+                <Input label="Email address" value={gEmail} onChange={(e) => setGEmail(e.target.value)} placeholder="yao@gmail.com" />
+                <Input label="Nationality" value={gNationality} onChange={(e) => setGNationality(e.target.value)} />
+                <Select
+                  label="Identity Document Type *"
+                  value={gIdType}
+                  onChange={(e) => setGIdType(e.target.value)}
+                  options={[
+                    { value: "Ghana Card", label: "Ghana Card" },
+                    { value: "Passport", label: "Passport" },
+                    { value: "Voter ID", label: "Voter ID" },
+                    { value: "Driver's License", label: "Driver's License" },
+                  ]}
+                />
+                <Input label="Identity Serial Number *" value={gIdNumber} onChange={(e) => setGIdNumber(e.target.value)} placeholder="e.g. GHA-920492-0" />
+              </div>
+            </div>
+          )}
+
+          {/* Dates and allocation */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 border-t border-slate-100 pt-4">
+            <Input label="Check In Date" type="date" required value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} />
+            <Input label="Check Out Date" type="date" required value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} />
             
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Full Name" value={gName} required onChange={(e) => setGName(e.target.value)} />
-              <Select
-                label="Gender"
-                value={gGender}
-                onChange={(e) => setGGender(e.target.value as any)}
-                options={[
-                  { value: "Male", label: "Male" },
-                  { value: "Female", label: "Female" },
-                ]}
-              />
+            <Select
+              label="Assign Available Room"
+              required
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              options={[
+                { value: "", label: "-- Match Room --" },
+                // Simply select rooms that are Available or show all
+                ...rooms.map((rm) => ({
+                  value: rm.id,
+                  label: `Room #${rm.roomNumber} - ${getRoomTypeName(rm.roomTypeId)} (GHS ₵${rm.pricePesewas / 100}/n) [${rm.status}]`,
+                })),
+              ]}
+            />
+
+            <Input label="Guests Count" type="number" value={guestsCount} onChange={(e) => setGuestsCount(Number(e.target.value))} />
+            <Input label="Immediate Deposit Paid (GHS)" type="number" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
+            <div className="sm:col-span-2">
+              <Input label="Special Requests / Instructions" value={specialRequests} onChange={(e) => setSpecialRequests(e.target.value)} placeholder="e.g. Double pillow request" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Nationality" value={gNat} onChange={(e) => setGNat(e.target.value)} />
-              <Input label="Contact Phone" type="tel" required placeholder="+233" value={gPhone} onChange={(e) => setGPhone(e.target.value)} />
+          </div>
+
+          <Button type="submit" variant="primary" className="w-full font-bold bg-blue-600 hover:bg-blue-700">Enter Reservation</Button>
+        </form>
+      </Modal>
+
+      {/* Modal - modify booking prior to arrival */}
+      <Modal isOpen={isEditBookingOpen} onClose={() => setIsEditBookingOpen(false)} title="Modify Active Reservation">
+        <form onSubmit={handleEditBooking} className="space-y-4">
+          <Input label="Check In Date" type="date" required value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} />
+          <Input label="Check Out Date" type="date" required value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} />
+          
+          <Select
+            label="Room Allocation"
+            required
+            value={roomId}
+            onChange={(e) => setRoomId(e.target.value)}
+            options={rooms.map((rm) => ({
+              value: rm.id,
+              label: `Room #${rm.roomNumber} - ${getRoomTypeName(rm.roomTypeId)} (₵${rm.pricePesewas / 100})`,
+            }))}
+          />
+          <Input label="Guests Count" type="number" value={guestsCount} onChange={(e) => setGuestsCount(Number(e.target.value))} />
+          <Input label="Special Requests" value={specialRequests} onChange={(e) => setSpecialRequests(e.target.value)} />
+
+          <Button type="submit" variant="primary" className="w-full font-bold bg-blue-600 hover:bg-blue-700">Save Booking Adjustments</Button>
+        </form>
+      </Modal>
+
+      {/* Slip Modal */}
+      <Modal isOpen={!!selectedSlip} onClose={() => setSelectedSlip(null)} title="Print Reservation Confirmation Receipt">
+        {selectedSlip && (
+          <div className="space-y-6 pt-2 select-text">
+            
+            {/* Elegant Letterhead printable layout */}
+            <div id="reservation-slip-printable" className="p-6 border border-slate-300 rounded-xl bg-white space-y-6 text-slate-800">
+              
+              <div className="flex justify-between items-start border-b border-slate-205 pb-4 border-b">
+                <div>
+                  <h3 className="text-base font-black uppercase text-[#1e3a5f]">{store.propertyProfile?.name}</h3>
+                  <p className="text-[10px] text-slate-450 text-slate-500 font-semibold">{store.propertyProfile?.address}</p>
+                  <p className="text-[10px] text-slate-500">{store.propertyProfile?.phone}</p>
+                </div>
+                <div className="text-right">
+                  <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[10px] font-black uppercase rounded block">CONFIRMATION SLIP</span>
+                  <p className="text-[10px] text-slate-500 font-bold font-mono mt-1">{selectedSlip.id}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider uppercase">Guest Profile</p>
+                  <p className="font-extrabold text-slate-800 text-sm mt-0.5">{getGuestField(selectedSlip.guestId, "name")}</p>
+                  <p className="text-slate-500">{getGuestField(selectedSlip.guestId, "phone")}</p>
+                  <p className="text-slate-505 font-medium">ID Ref: {getGuestField(selectedSlip.guestId, "id")}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider uppercase">Accomodation Block</p>
+                  <p className="font-extrabold text-slate-800 text-sm mt-0.5">Room #{getRoomNumber(selectedSlip.roomId)}</p>
+                  <p className="text-slate-500">Type: {getRoomTypeName(rooms.find((r) => r.id === selectedSlip.roomId)?.roomTypeId || "")}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-xs border-y border-slate-100 py-3 text-slate-800">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block leading-none">Arrival Schedule</span>
+                  <span className="font-extrabold text-slate-750 block mt-1">{new Date(selectedSlip.checkInDate).toLocaleDateString("en-GB")}</span>
+                  <span className="text-[10px] text-slate-500">Check In standard: {store.propertyProfile?.checkInTime}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block leading-none">Departure Schedule</span>
+                  <span className="font-extrabold text-slate-750 block mt-1">{new Date(selectedSlip.checkOutDate).toLocaleDateString("en-GB")}</span>
+                  <span className="text-[10px] text-slate-500">Check Out deadline: {store.propertyProfile?.checkOutTime}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1 bg-slate-50 p-3.5 rounded-lg border border-slate-100 text-xs">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block pb-1">Special / Special Requests</span>
+                <p className="text-slate-700 italic font-semibold">{selectedSlip.specialRequests || "No specific guest request registered"}</p>
+              </div>
+
+              <div className="flex justify-between items-center text-xs font-black text-[#1e3a5f] border-t border-slate-100 pt-3.5">
+                <span>Secure Escrow Deposit Paid:</span>
+                <span>GHS ₵{(selectedSlip.depositAmountPesewas / 100).toFixed(2)}</span>
+              </div>
+
+              <div className="text-[9px] text-slate-400 text-center uppercase tracking-wider pt-4 border-t border-dashed">
+                Printed via Success Above Dreams (SAD) PMS • Signature of front-desk clerk: ____________________
+              </div>
+
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Select
-                label="Verification ID"
-                value={gIdType}
-                onChange={(e) => setGIdType(e.target.value as any)}
-                options={[
-                  { value: "Ghana Card", label: "Ghana Card (GHA)" },
-                  { value: "Passport", label: "Passport" },
-                  { value: "Voter ID", label: "Voter ID" },
-                ]}
-              />
-              <Input label="ID Serial Number" required value={gIdNo} onChange={(e) => setGIdNo(e.target.value)} />
-            </div>
-            <Input label="Registered Address" value={gAddr} onChange={(e) => setGAddr(e.target.value)} />
-            <Button variant="success" type="submit" className="w-full">
-              Establish Profile
+
+            <Button variant="primary" onClick={handlePrintSlip} className="w-full font-bold bg-blue-600 hover:bg-blue-700">
+              <Printer className="w-4 h-4" />
+              <span>Print Slip / Save A4 PDF File</span>
             </Button>
-          </form>
-        ) : (
-          <form onSubmit={handleCreateReservation} className="space-y-3.5">
-            <div className="flex items-end gap-2">
-              <Select
-                label="Guest Recipient"
-                required
-                value={guestId}
-                onChange={(e) => setGuestId(e.target.value)}
-                options={guests.map((g) => ({ value: g.id, label: `${g.fullName} (${g.phone})` }))}
-                className="flex-1"
-              />
-              <button
-                type="button"
-                onClick={() => setShowCreateGuestForm(true)}
-                className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-brand-teal shrink-0 h-9.5 flex items-center justify-center cursor-pointer"
-                title="Create profile of returning or new guest first"
-              >
-                <UserPlus className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3.5">
-              <Select
-                label="Booking Category Target"
-                required
-                value={roomTypeId}
-                onChange={(e) => setRoomTypeId(e.target.value)}
-                options={roomTypes.map((rt) => ({ value: rt.id, label: `${rt.name} — ₵${(rt.basePricePesewas/100).toFixed(2)}/nt` }))}
-              />
-              <Select
-                label="Specific Room Block (Optional)"
-                value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
-                options={[
-                  { value: "", label: "-- Assign at Check-In --" },
-                  ...rooms
-                    .filter((r) => r.roomTypeId === roomTypeId)
-                    .map((r) => ({
-                      value: r.id,
-                      label: `Room ${r.roomNumber} (${r.status})`,
-                    })),
-                ]}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3.5">
-              <Input
-                label="Check-In"
-                type="date"
-                required
-                value={checkIn}
-                onChange={(e) => setCheckIn(e.target.value)}
-              />
-              <Input
-                label="Check-Out"
-                type="date"
-                required
-                value={checkOut}
-                onChange={(e) => setCheckOut(e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <Input
-                label="No of Adults"
-                type="number"
-                min={1}
-                value={adults}
-                onChange={(e) => setAdults(parseInt(e.target.value) || 1)}
-              />
-              <Input
-                label="No of Children"
-                type="number"
-                min={0}
-                value={children}
-                onChange={(e) => setChildren(parseInt(e.target.value) || 0)}
-              />
-              <Input
-                label="Secure Deposit (₵)"
-                type="number"
-                min={0}
-                value={deposit}
-                onChange={(e) => setDeposit(parseFloat(e.target.value) || 0)}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Select
-                label="Booking Source Channel"
-                value={source}
-                onChange={(e) => setSource(e.target.value as any)}
-                options={Object.values(ReservationSource).map((s) => ({ value: s, label: s }))}
-              />
-              <Input
-                label="Special Requests"
-                placeholder="e.g. airport picker, pool-facing room"
-                value={requests}
-                onChange={(e) => setRequests(e.target.value)}
-              />
-            </div>
-          </form>
+            
+          </div>
         )}
       </Modal>
 
+      {/* CANCELLATION MODAL WITH FEES */}
+      <Modal
+        isOpen={isCancelModalOpen}
+        onClose={() => {
+          setIsCancelModalOpen(false);
+          setCancellingRes(null);
+        }}
+        title="Cancel Guest Booking"
+      >
+        {cancellingRes && (
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-lg text-xs space-y-1">
+              <p className="font-extrabold uppercase tracking-wider text-[10px] text-red-900">Are you sure you want to cancel this booking?</p>
+              <p className="font-medium text-red-700">
+                Cancel booking for guest <strong className="font-bold">{getGuestField(cancellingRes.guestId, "name")}</strong> in <strong className="font-bold">Room #{getRoomNumber(cancellingRes.roomId)}</strong>. Once cancelled, this room will be set back to Available immediately.
+              </p>
+            </div>
+
+            <div className="space-y-4 pt-1">
+              <Input
+                label="Cancellation Fee Override Amount (GHS ₵) if applicable"
+                type="number"
+                min="0"
+                value={cancelFee}
+                onChange={(e) => setCancelFee(e.target.value)}
+                placeholder="0.00"
+              />
+
+              <div className="flex gap-2 justify-end pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsCancelModalOpen(false);
+                    setCancellingRes(null);
+                  }}
+                  className="font-bold text-xs"
+                >
+                  Go Back
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => {
+                    const feeValue = parseFloat(cancelFee) || 0;
+                    store.updateReservationStatus(cancellingRes.id, ReservationStatus.CANCELLED, feeValue * 100);
+                    setIsCancelModalOpen(false);
+                    setCancellingRes(null);
+                  }}
+                  className="font-bold text-xs bg-red-600 hover:bg-red-700"
+                >
+                  Confirm Cancellation
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Custom Reusable ConfirmDialog Component */}
+      <ConfirmDialog
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmText={confirmConfig.confirmText}
+        cancelText="Cancel"
+        variant="danger"
+      />
+
     </div>
   );
+};
+
+const getRoomTypeName = (typeId: string) => {
+  const store = useHotelStore.getState();
+  return store.roomTypes.find((t) => t.id === typeId)?.name || "Standard Room";
+};
+
+const getRoomNumber = (roomId: string) => {
+  const store = useHotelStore.getState();
+  return store.rooms.find((r) => r.id === roomId)?.roomNumber || "Unassigned";
+};
+
+const getGuestField = (gid: string, field: "name" | "phone" | "id") => {
+  const store = useHotelStore.getState();
+  const gst = store.guests.find((g) => g.id === gid);
+  if (!gst) return "N/A";
+  if (field === "name") return gst.fullName;
+  if (field === "phone") return gst.phone;
+  return gst.idNumber;
 };

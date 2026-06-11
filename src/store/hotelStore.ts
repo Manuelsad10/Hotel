@@ -1,1393 +1,830 @@
 import { create } from "zustand";
 import {
-  PropertyMode,
+  UserRole,
+  RoomStatus,
+  HousekeepingStatus,
+  ReservationStatus,
+  PaymentMethod,
   PropertyProfile,
   RoomType,
   Room,
-  RoomStatus,
-  HousekeepingStatus,
-  HousekeepingTaskStatus,
-  ReservationStatus,
-  ReservationSource,
-  PaymentMethod,
-  ChargeType,
   Guest,
+  ExtraCharge,
   Reservation,
-  HousekeepingTask,
-  LostAndFoundLog,
-  MenuItem,
-  RestaurantOrder,
-  ConferenceRoom,
-  ConferenceBooking,
-  AmenitySetup,
-  AmenityBooking,
   Staff,
-  InventoryItem,
-  StockTransaction,
-  FolioCharge,
-  FolioSettle,
-  UserRole,
+  Bill,
+  Toast,
 } from "../types";
 
-// Base interface for our entire state
-interface HotelState {
-  // Config & Administration
+// Base State Store for Success Above Dreams (SAD) PMS
+interface InnCoreStore {
+  // Config & Auth
   propertyProfile: PropertyProfile | null;
-  currentUser: { username: string; fullName: string; role: UserRole } | null;
+  currentUser: { fullName: string; role: UserRole } | null;
 
-  // DB Collections
+  // Database Collections
   roomTypes: RoomType[];
   rooms: Room[];
   guests: Guest[];
   reservations: Reservation[];
-  housekeepingTasks: HousekeepingTask[];
-  lostAndFound: LostAndFoundLog[];
-  menuItems: MenuItem[];
-  restaurantOrders: RestaurantOrder[];
-  conferenceRooms: ConferenceRoom[];
-  conferenceBookings: ConferenceBooking[];
-  amenities: AmenitySetup[];
-  amenityBookings: AmenityBooking[];
   staffList: Staff[];
-  inventoryList: InventoryItem[];
-  stockTransactions: StockTransaction[];
+  bills: Record<string, Bill>; // Key: reservationId -> Bill
 
-  // Folio Database [ReservationId -> FolioSettle]
-  folios: Record<string, FolioSettle>;
+  // System Notifications
+  toasts: Toast[];
 
-  // Alerts & Notifications (Toasts)
-  toasts: Array<{ id: string; message: string; type: "success" | "error" | "info" }>;
-
-  // --- ACTIONS ---
-  // Configuration
-  initializeSetup: (profile: Omit<PropertyProfile, "setupComplete">, adminUser: { fullName: string; username: string; psw: string }) => void;
+  // ACTIONS
+  // Setup & Auth
+  initializeSetup: (profile: PropertyProfile, adminUser: { fullName: string; username: string; psw: string }, withSampleData: boolean) => void;
   resetAllData: () => void;
-  loginUser: (username: string, role: UserRole) => boolean;
+  loginUser: (fullName: string, role: UserRole) => void;
   logoutUser: () => void;
 
-  // Toast controls
-  addToast: (message: string, type?: "success" | "error" | "info") => void;
+  // Toasts
+  addToast: (message: string, type?: "success" | "error") => void;
   removeToast: (id: string) => void;
 
-  // Room & Types
-  addRoom: (room: Omit<Room, "id" | "status" | "housekeepingStatus" | "extraBedAdded" | "extraBedPricePesewas">) => void;
-  bulkCreateRooms: (start: number, end: number, floor: string, roomTypeId: string, building?: string) => void;
-  updateRoomStatus: (roomId: string, status: RoomStatus) => void;
-  updateRoomHousekeeping: (roomId: string, status: HousekeepingStatus) => void;
-  toggleExtraBed: (roomId: string, active: boolean, pricePesewas: number) => void;
+  // Room Types
   addRoomType: (roomType: RoomType) => void;
+  editRoomType: (id: string, name: string, basePricePesewas: number) => void;
+  deleteRoomType: (id: string) => void;
+
+  // Rooms
+  addRoom: (room: Omit<Room, "id" | "status" | "housekeepingStatus">) => void;
+  editRoom: (id: string, updates: Partial<Room>) => void;
+  deleteRoom: (id: string) => void;
+  bulkUpdateRooms: (ids: string[], updates: Partial<Room>) => void;
+  bulkDeleteRooms: (ids: string[]) => void;
 
   // Guests
   addGuest: (guest: Omit<Guest, "id">) => Guest;
   updateGuest: (guest: Guest) => void;
+  editGuest: (id: string, updates: Partial<Guest>) => void;
+  deleteGuest: (id: string) => void;
 
   // Reservations
-  createReservation: (res: Omit<Reservation, "id" | "createdAt" | "cancellationFeePesewas">) => Reservation;
-  updateReservationStatus: (id: string, status: ReservationStatus) => void;
-  modifyReservation: (updated: Reservation) => void;
-  cancelReservation: (id: string) => void;
-
-  // Folio Billing & Adjustment
-  getOrCreateFolio: (reservationId: string) => FolioSettle;
-  addFolioCharge: (reservationId: string, charge: Omit<FolioCharge, "id" | "createdAt">) => void;
-  removeFolioCharge: (reservationId: string, chargeId: string) => void;
-  recordFolioPayment: (reservationId: string, amountPesewas: number, method: PaymentMethod, reference?: string) => void;
-  applyFolioDiscount: (reservationId: string, discountPesewas: number) => void;
-  settleFolio: (reservationId: string) => void;
+  createReservation: (res: Omit<Reservation, "id" | "createdAt" | "status" | "extraCharges" | "cancellationFeePesewas">) => Reservation;
+  updateReservationStatus: (id: string, status: ReservationStatus, cancelFeePesewas?: number) => void;
+  editReservation: (id: string, checkInDate: string, checkOutDate: string, roomId: string, adults: number, specialRequests?: string) => void;
+  addExtraCharge: (reservationId: string, label: string, amountPesewas: number) => void;
+  removeExtraCharge: (reservationId: string, chargeId: string) => void;
 
   // Housekeeping
-  assignHousekeepingTask: (roomId: string, housekeeperId: string, notes?: string) => void;
-  updateHousekeepingTask: (taskId: string, status: HousekeepingTaskStatus, notes?: string, checklist?: Array<{ label: string; completed: boolean }>) => void;
-  addLostAndFoundItem: (item: Omit<LostAndFoundLog, "id">) => void;
-  updateLostAndFoundStatus: (id: string, status: "In Custody" | "Returned" | "Discarded", notes?: string, returnedTo?: string) => void;
+  assignRoomCleaning: (roomId: string, housekeeperId: string) => void;
+  updateCleaningStatus: (roomId: string, status: HousekeepingStatus, notes?: string) => void;
+  markRoomMaintenance: (roomId: string, notes: string) => void;
 
-  // Restaurant
-  addMenuItem: (item: MenuItem) => void;
-  updateMenuItemAvailability: (id: string, available: boolean) => void;
-  placeRestaurantOrder: (order: Omit<RestaurantOrder, "id" | "orderNumber" | "timestamp">) => RestaurantOrder;
-  updateOrderStatus: (id: string, status: RestaurantOrder["status"]) => void;
-
-  // Conference Bookings
-  addConferenceRoom: (croom: ConferenceRoom) => void;
-  bookConferenceRoom: (booking: Omit<ConferenceBooking, "id" | "status">) => ConferenceBooking;
-  updateConferenceStatus: (id: string, status: ConferenceBooking["status"]) => void;
-
-  // Amenities
-  bookAmenity: (booking: Omit<AmenityBooking, "id" | "status">) => AmenityBooking;
-  completeAmenityBooking: (id: string) => void;
+  // Billing
+  calculateBill: (reservationId: string, discountPesewas?: number) => Bill;
+  recordPayment: (reservationId: string, method: PaymentMethod, reference?: string) => void;
+  applyDiscount: (reservationId: string, amountPesewas: number) => void;
 
   // Staff
   addStaff: (staff: Omit<Staff, "id">) => void;
-  updateStaffStatus: (id: string, status: Staff["status"]) => void;
-  clockStaff: (id: string, clockIn: boolean) => void;
+  editStaff: (id: string, updates: Partial<Staff>) => void;
 
-  // Inventory
-  addInventoryItem: (item: Omit<InventoryItem, "stockLevel">) => void;
-  recordStockTransaction: (trans: Omit<StockTransaction, "id" | "timestamp">) => void;
-
-  // Nightly trigger
-  triggerNightlyRoomCharges: () => void;
+  // Property Profile
+  updatePropertyProfile: (updates: Partial<PropertyProfile>) => void;
 }
 
-// Internal default Room Types config
-const DEFAULT_ROOM_TYPES: RoomType[] = [
-  { id: "rt-standard", name: "Standard Room", description: "Comfortable standard room with basic amenities.", maxOccupancy: 2, basePricePesewas: 45000, amenities: ["AC", "WiFi", "TV", "Hot Water"] },
-  { id: "rt-deluxe", name: "Deluxe Room", description: "Spacious luxury room with enhanced view and private balcony.", maxOccupancy: 2, basePricePesewas: 75000, amenities: ["AC", "WiFi", "TV", "Hot Water", "Balcony", "Sea view"] },
-  { id: "rt-suite", name: "Executive Suite", description: "Grand suite with a separate private parlor and workspace.", maxOccupancy: 4, basePricePesewas: 150000, amenities: ["AC", "WiFi", "TV", "Hot Water", "Balcony", "Sea view", "Minibar", "Kitchenette"] },
-  { id: "rt-presidential", name: "Presidential Villa", description: "Ultra-luxury multiple room villa with private infinity pool.", maxOccupancy: 6, basePricePesewas: 350000, amenities: ["AC", "WiFi", "TV", "Hot Water", "Balcony", "Sea view", "Minibar", "Kitchenette", "Private pool"] },
-];
-
-// Seed Helper Data
-const SEED_GUESTS: Guest[] = [
-  { id: "gst-1", fullName: "Kwesi Mensah", gender: "Male", nationality: "Ghanaian", idType: "Ghana Card", idNumber: "GHA-102948293-1", phone: "+233 24 412 3456", email: "kwesi@gmail.com", address: "Airport Residential, Accra", company: "MTN Ghana", vip: true, blacklist: false },
-  { id: "gst-2", fullName: "Abena Osei", gender: "Female", nationality: "Ghanaian", idType: "Voter ID", idNumber: "VOT-999332211", phone: "+233 20 543 2109", email: "abena.osei@yahoo.com", address: "East Legon, Accra", vip: false, blacklist: false },
-  { id: "gst-3", fullName: "John Smith", gender: "Male", nationality: "US Citizen", idType: "Passport", idNumber: "USA-49204910", phone: "+1 555-019-2834", email: "johnsmith@gmail.com", address: "Boston, MA", company: "USAID", vip: false, blacklist: false },
-  { id: "gst-4", fullName: "Kofi Boateng", gender: "Male", nationality: "Ghanaian", idType: "Driver's License", idNumber: "DL-392019A", phone: "+233 50 111 2222", email: "kofiboat@gmail.com", address: "Kumasi", vip: false, blacklist: true, blacklistReason: "Property damage during last stay, refused to fully pay room tab." },
-];
-
-const SEED_STAFF: Staff[] = [
-  { id: "stf-1", fullName: "Yao Azia", gender: "Male", role: UserRole.FRONT_DESK_AGENT, department: "Front Desk", phone: "+233 24 100 2001", email: "yao@staycore.com", hireDate: "01/01/2025", status: "Active" },
-  { id: "stf-2", fullName: "Comfort Mensah", gender: "Female", role: UserRole.HOUSEKEEPER, department: "Housekeeping", phone: "+233 24 100 2002", email: "comfort@staycore.com", hireDate: "15/01/2025", status: "Active" },
-  { id: "stf-3", fullName: "Kofi Appiah", gender: "Male", role: UserRole.HOUSEKEEPING_SUPERVISOR, department: "Housekeeping", phone: "+233 24 100 2003", email: "kappiah@staycore.com", hireDate: "10/02/2025", status: "Active" },
-  { id: "stf-4", fullName: "Chef Amara", gender: "Female", role: UserRole.RESTAURANT_STAFF, department: "F&B Kitchen", phone: "+233 24 100 2004", email: "amara@staycore.com", hireDate: "20/02/2025", status: "Active" },
-  { id: "stf-5", fullName: "David Mensah", gender: "Male", role: UserRole.ACCOUNTANT, department: "Finance", phone: "+233 24 100 2005", email: "david@staycore.com", hireDate: "01/03/2025", status: "Active" },
-];
-
-const SEED_INVENTORY: InventoryItem[] = [
-  { id: "inv-1", name: "Premium Bath Towel", category: "Linen", unit: "pieces", reorderLevel: 40, stockLevel: 45, baseCostPesewas: 7500, supplierName: "Accra Linen Co." },
-  { id: "inv-2", name: "Mini Toiletry Kit (Shampoo/Soap)", category: "Toiletries", unit: "packs", reorderLevel: 100, stockLevel: 120, baseCostPesewas: 450, supplierName: "Vivaldi Cosmetics" },
-  { id: "inv-3", name: "Heavy Duty Multi-Surface Cleaner", category: "Cleaning", unit: "liters", reorderLevel: 25, stockLevel: 18, baseCostPesewas: 3500, supplierName: "Ghana Chemicals Ltd" }, // Low Stock!
-  { id: "inv-4", name: "Basmati Rice 25kg", category: "Kitchen", unit: "bags", reorderLevel: 10, stockLevel: 12, baseCostPesewas: 38000, supplierName: "Kingdom Foods" },
-  { id: "inv-5", name: "Double Bed Linen Sheet", category: "Linen", unit: "pieces", reorderLevel: 50, stockLevel: 62, baseCostPesewas: 12000, supplierName: "Accra Linen Co." },
-];
-
-const SEED_MENU: MenuItem[] = [
-  // Starters
-  { id: "mn-1", name: "Crispy Spring Rolls (Veg/Beef)", category: "Starters", pricePesewas: 4500, available: true },
-  { id: "mn-2", name: "Spicy Samosas with Dip", category: "Starters", pricePesewas: 3500, available: true },
-  // Local
-  { id: "mn-3", name: "Ghanaian Jollof Rice with Grilled Chicken", category: "Local Dishes", pricePesewas: 9500, available: true, modifiers: ["Extra Spicy", "Mild", "Coleslaw on side"] },
-  { id: "mn-4", name: "Special Goat Waakye Supreme", category: "Local Dishes", pricePesewas: 11000, available: true, modifiers: ["Wele", "Fried Fish", "Avocado"] },
-  { id: "mn-5", name: "Pound Fufu with Fresh Goat Light Soup", category: "Local Dishes", pricePesewas: 12500, available: true },
-  { id: "mn-6", name: "Spicy Kelewele with Peanuts", category: "Local Dishes", pricePesewas: 4500, available: true },
-  // Continental
-  { id: "mn-7", name: "Sizzling Beef Ribeye Steak & Fries", category: "Continental", pricePesewas: 28000, available: true, modifiers: ["Medium Rare", "Well Done", "Mushroom Sauce"] },
-  { id: "mn-8", name: "Classic StayCore Club Sandwich", category: "Continental", pricePesewas: 7500, available: true },
-  // Drinks
-  { id: "mn-9", name: "Fresh Pineapple & Ginger Juice", category: "Soft Drinks", pricePesewas: 3500, available: true },
-  { id: "mn-10", name: "Chilled Club Premium Lager Beer", category: "Alcoholic Beverages", pricePesewas: 4000, available: true },
-  { id: "mn-11", name: "South African Shiraz (Glass)", category: "Alcoholic Beverages", pricePesewas: 7000, available: true },
-];
-
-const SEED_CONFERENCE_ROOMS: ConferenceRoom[] = [
-  { id: "cr-1", name: "Freedom Hall Grand Ballroom", capacity: 250, layoutOptions: ["Theatre", "Classroom", "U-shape"], amenities: ["Projector", "Large Screen", "PA Sound System", "High-speed WiFi", "Lectern"], halfDayRatePesewas: 180000, fullDayRatePesewas: 320000 },
-  { id: "cr-2", name: "Kwame Nkrumah Boardroom", capacity: 20, layoutOptions: ["Boardroom"], amenities: ["Interactive TV screen", "Conference phone", "Whiteboard", "Espresso machine"], halfDayRatePesewas: 80000, fullDayRatePesewas: 150000 },
-];
-
-const SEED_AMENITIES: AmenitySetup[] = [
-  { id: "am-1", name: "Pool", pricePesewas: 5000, durationMinutes: 180 },
-  { id: "am-2", name: "Spa", pricePesewas: 25000, durationMinutes: 60 },
-  { id: "am-3", name: "Gym", pricePesewas: 3500, durationMinutes: 120 },
-  { id: "am-4", name: "Boat Ride", pricePesewas: 18000, durationMinutes: 45 },
-];
-
-// Helper to generate UUID-like IDs
-const uuid = () => Math.random().toString(36).substring(2, 15);
-
-// Get default calendar dates for horizontal calendar: e.g. 15 dates starting from today minus 3 days
-const todayString = (offsetDays = 0) => {
+// Generate serial numbers for bookings: INN-YYYYMMDD-XXXX
+const generateReservationNumber = () => {
   const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().split("T")[0];
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const rand = String(Math.floor(1000 + Math.random() * 9000));
+  return `INN-${yyyy}${mm}${dd}-${rand}`;
 };
 
-// Safe localStorage helper
-const getInitialState = () => {
-  let parsed: any = null;
+// Initial empty state values
+const emptyState = {
+  propertyProfile: null,
+  currentUser: null,
+  roomTypes: [],
+  rooms: [],
+  guests: [],
+  reservations: [],
+  staffList: [],
+  bills: {},
+  toasts: [],
+};
+
+// Local storage key helper
+const STORAGE_KEY = "SAD_PMS_PERSISTENT_STATE";
+
+const getSavedState = () => {
   try {
-    const saved = localStorage.getItem("SAD_HOTEL_PERSISTENT_STATE");
-    if (saved) {
-      parsed = JSON.parse(saved);
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (data) {
+      const parsed = JSON.parse(data);
+      // Ensure defaults exist for loaded properties
+      return {
+        propertyProfile: parsed.propertyProfile || null,
+        currentUser: parsed.currentUser || null,
+        roomTypes: parsed.roomTypes || [],
+        rooms: parsed.rooms || [],
+        guests: parsed.guests || [],
+        reservations: parsed.reservations || [],
+        staffList: parsed.staffList || [],
+        bills: parsed.bills || {},
+        toasts: [],
+      };
     }
-  } catch (e) {
-    console.error("Failed to load state from localStorage:", e);
+  } catch (error) {
+    console.error("Failed parsing localStorage store database state for Success Above Dreams (SAD)", error);
   }
+  return emptyState;
+};
 
-  // Pre-seed default collections (Rooms, Reservations, etc)
-  const seedRooms: Room[] = [];
-  // Build rooms for standard floors
-  const floorRoomsNum = [
-    { floor: "Floor 1", start: 101, end: 106, type: "rt-standard" },
-    { floor: "Floor 2", start: 201, end: 205, type: "rt-deluxe" },
-    { floor: "Floor 3", start: 301, end: 303, type: "rt-suite" },
-    { floor: "Penthouse", start: 401, end: 401, type: "rt-presidential" },
-  ];
+export const useHotelStore = create<InnCoreStore>((set, get) => {
+  const initialState = getSavedState();
 
-  floorRoomsNum.forEach(({ floor, start, end, type }) => {
-    for (let r = start; r <= end; r++) {
-      seedRooms.push({
-        id: `rm-${r}`,
-        roomNumber: r.toString(),
-        floor,
-        building: "Main Building Block",
-        roomTypeId: type,
+  const persist = (nextState: Partial<InnCoreStore>) => {
+    const updated = { ...get(), ...nextState };
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          propertyProfile: updated.propertyProfile,
+          currentUser: updated.currentUser,
+          roomTypes: updated.roomTypes,
+          rooms: updated.rooms,
+          guests: updated.guests,
+          reservations: updated.reservations,
+          staffList: updated.staffList,
+          bills: updated.bills,
+        })
+      );
+    } catch (e) {
+      console.error("Failsafe: State writing error in localStorage key saving for Success Above Dreams (SAD)", e);
+    }
+    set(nextState as any);
+  };
+
+  return {
+    ...initialState,
+
+    initializeSetup: (profile, adminUser, withSampleData) => {
+      // Create admin user matching role
+      const rootAdmin = {
+        fullName: adminUser.fullName,
+        role: UserRole.ADMIN,
+      };
+
+      if (!withSampleData) {
+        persist({
+          propertyProfile: { ...profile, setupComplete: true },
+          currentUser: rootAdmin,
+          roomTypes: [
+            { id: "rt-std", name: "Standard Room", basePricePesewas: 45000 },
+            { id: "rt-dlx", name: "Deluxe Room", basePricePesewas: 75000 },
+          ],
+          rooms: [
+            { id: "rm-101", roomNumber: "101", roomTypeId: "rt-std", floor: "Floor 1", pricePesewas: 45000, status: RoomStatus.AVAILABLE, housekeepingStatus: HousekeepingStatus.CLEAN },
+            { id: "rm-102", roomNumber: "102", roomTypeId: "rt-dlx", floor: "Floor 1", pricePesewas: 75000, status: RoomStatus.AVAILABLE, housekeepingStatus: HousekeepingStatus.CLEAN },
+          ],
+          guests: [],
+          reservations: [],
+          staffList: [
+            { id: "st-admin", fullName: adminUser.fullName, role: UserRole.ADMIN, phone: profile.phone, username: "admin", psw: "admin123", status: "Active" },
+          ],
+          bills: {},
+        });
+        get().addToast(`Welcome to Success Above Dreams (SAD) PMS! Hotel ${profile.name} configured successfully.`, "success");
+        return;
+      }
+
+      // Populate Seed Mock-Data (for professional demonstration)
+      const seedTypes: RoomType[] = [
+        { id: "rt-std", name: "Standard Room", basePricePesewas: 45000 }, // GHS 450.00
+        { id: "rt-dlx", name: "Deluxe Room", basePricePesewas: 75000 },  // GHS 750.00
+        { id: "rt-ste", name: "Executive Suite", basePricePesewas: 150000 }, // GHS 1,500.00
+      ];
+
+      const seedRooms: Room[] = [
+        { id: "rm-101", roomNumber: "101", roomTypeId: "rt-std", floor: "Floor 1", pricePesewas: 45000, status: RoomStatus.AVAILABLE, housekeepingStatus: HousekeepingStatus.CLEAN },
+        { id: "rm-102", roomNumber: "102", roomTypeId: "rt-std", floor: "Floor 1", pricePesewas: 45000, status: RoomStatus.OCCUPIED, housekeepingStatus: HousekeepingStatus.CLEAN, assignedHousekeeperId: "st-comfort" },
+        { id: "rm-201", roomNumber: "201", roomTypeId: "rt-dlx", floor: "Floor 2", pricePesewas: 75000, status: RoomStatus.RESERVED, housekeepingStatus: HousekeepingStatus.CLEAN },
+        { id: "rm-202", roomNumber: "202", roomTypeId: "rt-dlx", floor: "Floor 2", pricePesewas: 75000, status: RoomStatus.AVAILABLE, housekeepingStatus: HousekeepingStatus.DIRTY },
+        { id: "rm-301", roomNumber: "301", roomTypeId: "rt-ste", floor: "Floor 3", pricePesewas: 150000, status: RoomStatus.UNDER_MAINTENANCE, housekeepingStatus: HousekeepingStatus.DIRTY, notes: "AC coolant leakage on floor carpet" },
+      ];
+
+      const seedGuests: Guest[] = [
+        { id: "gst-1", fullName: "Kofi Mensah", phone: "+233 24 100 2001", email: "kofi.mensah@gmail.com", nationality: "Ghanaian", idType: "Ghana Card", idNumber: "GHA-123456789-0", notes: "Prefers tea over coffee.", vip: true },
+        { id: "gst-2", fullName: "Sarah Connor", phone: "+233 20 987 6543", email: "sarah@connor.com", nationality: "American", idType: "Passport", idNumber: "USA-99887766", vip: false },
+        { id: "gst-3", fullName: "Yao Azia", phone: "+233 55 555 1209", email: "yao@azia.com", nationality: "Togolese", idType: "Passport", idNumber: "TOG-492810", vip: false },
+      ];
+
+      // 3 seed reservations representing past stay, current stay, and upcoming stay
+      const res1_id = "INN-20260601-8392";
+      const res2_id = "INN-20260605-4920";
+      const res3_id = "INN-20260609-1123";
+
+      const seedReservations: Reservation[] = [
+        {
+          id: res1_id,
+          guestId: "gst-1",
+          roomId: "rm-101",
+          checkInDate: "2026-06-01",
+          checkOutDate: "2026-06-04",
+          adults: 2,
+          specialRequests: "Anniversary setup - fruit platter",
+          depositAmountPesewas: 20000,
+          status: ReservationStatus.CHECKED_OUT,
+          createdAt: "2026-05-25T14:20:00Z",
+          extraCharges: [
+            { id: "ex-1", label: "Laundry dry cleaning", amountPesewas: 6500, createdAt: "2026-06-02T11:00:00Z" }
+          ],
+        },
+        {
+          id: res2_id,
+          guestId: "gst-2",
+          roomId: "rm-102",
+          checkInDate: "2026-06-05",
+          checkOutDate: "2026-06-12",
+          adults: 1,
+          specialRequests: "Quiet corner room, high floor if available",
+          depositAmountPesewas: 0,
+          status: ReservationStatus.CHECKED_IN,
+          createdAt: "2026-06-01T09:00:00Z",
+          extraCharges: [
+            { id: "ex-2", label: "Minibar drinks", amountPesewas: 4500, createdAt: "2026-06-06T18:30:00Z" }
+          ],
+        },
+        {
+          id: res3_id,
+          guestId: "gst-3",
+          roomId: "rm-201",
+          checkInDate: "2026-06-09",
+          checkOutDate: "2026-06-11",
+          adults: 1,
+          depositAmountPesewas: 50000,
+          status: ReservationStatus.CONFIRMED,
+          createdAt: "2026-06-05T10:15:00Z",
+          extraCharges: [],
+        }
+      ];
+
+      const seedStaff: Staff[] = [
+        { id: "st-admin", fullName: adminUser.fullName, role: UserRole.ADMIN, phone: profile.phone, username: "admin", psw: "admin123", status: "Active" },
+        { id: "st-front", fullName: "Yao Azia", role: UserRole.FRONT_DESK, phone: "+233 24 999 5001", username: "kwame", psw: "kwame123", status: "Active" },
+        { id: "st-comfort", fullName: "Comfort Mensah", role: UserRole.HOUSEKEEPER, phone: "+233 20 888 1202", username: "comfort", psw: "comfort123", status: "Active" },
+        { id: "st-david", fullName: "David Accountant", role: UserRole.ACCOUNTANT, phone: "+233 24 777 9102", username: "david", psw: "david123", status: "Active" },
+      ];
+
+      // Setup initial bills for checked-out and checked-in ones
+      const seedBills: Record<string, Bill> = {
+        [res1_id]: {
+          id: "Bill-res1",
+          reservationId: res1_id,
+          roomChargesPesewas: 3 * 45000, // 3 nights @ 450
+          extrasChargesPesewas: 6500,
+          discountPesewas: 0,
+          vatPesewas: Math.round(((3 * 45000) + 6500) * (profile.vatRate / 100)),
+          totalPesewas: Math.round(((3 * 45000) + 6500) * (1 + profile.vatRate / 100)),
+          paid: true,
+          paymentMethod: PaymentMethod.CASH,
+          paymentReference: "CASH_REC_Y_AZIA",
+          settledAt: "2026-06-04T11:05:00Z",
+        },
+        [res2_id]: {
+          id: "Bill-res2",
+          reservationId: res2_id,
+          roomChargesPesewas: 7 * 45000, // 7 nights @ 450
+          extrasChargesPesewas: 4500,
+          discountPesewas: 0,
+          vatPesewas: Math.round(((7 * 45000) + 4500) * (profile.vatRate / 100)),
+          totalPesewas: Math.round(((7 * 45000) + 4500) * (1 + profile.vatRate / 100)),
+          paid: false,
+        }
+      };
+
+      persist({
+        propertyProfile: { ...profile, setupComplete: true },
+        currentUser: rootAdmin,
+        roomTypes: seedTypes,
+        rooms: seedRooms,
+        guests: seedGuests,
+        reservations: seedReservations,
+        staffList: seedStaff,
+        bills: seedBills,
+      });
+
+      get().addToast(`Welcome to Success Above Dreams (SAD)! Model data loaded successfully for testing.`, "success");
+    },
+
+    resetAllData: () => {
+      localStorage.removeItem(STORAGE_KEY);
+      set({
+        propertyProfile: null,
+        currentUser: null,
+        roomTypes: [],
+        rooms: [],
+        guests: [],
+        reservations: [],
+        staffList: [],
+        bills: {},
+        toasts: [{ id: Math.random().toString(), message: "Hotel PMS Factoring Reset successfully completed.", type: "success" }],
+      });
+    },
+
+    loginUser: (fullName, role) => {
+      persist({
+        currentUser: { fullName, role },
+      });
+      get().addToast(`Logged in successfully as ${fullName} (${role})`, "success");
+    },
+
+    logoutUser: () => {
+      persist({
+        currentUser: null,
+      });
+      get().addToast("Signed out successfully.", "success");
+    },
+
+    // Toasts
+    addToast: (message, type = "success") => {
+      const id = String(Math.random());
+      set((state) => ({
+        toasts: [...state.toasts, { id, message, type }],
+      }));
+      // Auto-expire
+      setTimeout(() => {
+        set((state) => ({
+          toasts: state.toasts.filter((t) => t.id !== id),
+        }));
+      }, 4000);
+    },
+
+    removeToast: (id) => {
+      set((state) => ({
+        toasts: state.toasts.filter((t) => t.id !== id),
+      }));
+    },
+
+    // Room Types
+    addRoomType: (roomType) => {
+      persist({
+        roomTypes: [...get().roomTypes, roomType],
+      });
+      get().addToast(`Created room type: ${roomType.name}`, "success");
+    },
+
+    editRoomType: (id, name, basePricePesewas) => {
+      const updatedTypes = get().roomTypes.map((rt) =>
+        rt.id === id ? { ...rt, name, basePricePesewas } : rt
+      );
+      // Also update base price in rooms of this type
+      const updatedRooms = get().rooms.map((rm) =>
+        rm.roomTypeId === id ? { ...rm, pricePesewas: basePricePesewas } : rm
+      );
+      persist({
+        roomTypes: updatedTypes,
+        rooms: updatedRooms,
+      });
+      get().addToast(`Updated room type details`, "success");
+    },
+
+    deleteRoomType: (id) => {
+      if (get().roomTypes.length <= 1) {
+        get().addToast("Cannot delete the last remaining room type classification.", "error");
+        return;
+      }
+      const filteredTypes = get().roomTypes.filter((t) => t.id !== id);
+      const filteredRooms = get().rooms.filter((r) => r.roomTypeId !== id);
+      persist({
+        roomTypes: filteredTypes,
+        rooms: filteredRooms,
+      });
+      get().addToast("Room type classification deleted successfully", "success");
+    },
+
+    // Rooms
+    addRoom: (roomData) => {
+      const id = "rm-" + Math.random().toString(36).substring(2, 6);
+      const newRoom: Room = {
+        ...roomData,
+        id,
         status: RoomStatus.AVAILABLE,
         housekeepingStatus: HousekeepingStatus.CLEAN,
-        extraBedAdded: false,
-        extraBedPricePesewas: 12000,
+      };
+      persist({
+        rooms: [...get().rooms, newRoom],
       });
-    }
-  });
-
-  // Seed standard active and past reservations
-  const seedReservations: Reservation[] = [
-    // 1. Past completed stay
-    {
-      id: "RES-20260601-3921",
-      guestId: "gst-1",
-      roomTypeId: "rt-standard",
-      roomId: "rm-101",
-      checkInDate: todayString(-8),
-      checkOutDate: todayString(-5),
-      adults: 2,
-      children: 0,
-      source: ReservationSource.ONLINE_OTA,
-      status: ReservationStatus.CHECKED_OUT,
-      depositAmountPesewas: 45000,
-      cancellationFeePesewas: 0,
-      createdAt: todayString(-10),
+      get().addToast(`Room #${newRoom.roomNumber} created successfully`, "success");
     },
-    // 2. Currently checked-in stay (Occupied)
-    {
-      id: "RES-20260605-8420",
-      guestId: "gst-2",
-      roomTypeId: "rt-deluxe",
-      roomId: "rm-201",
-      checkInDate: todayString(-3),
-      checkOutDate: todayString(2),
-      adults: 2,
-      children: 1,
-      source: ReservationSource.WALK_IN,
-      status: ReservationStatus.CHECKED_IN,
-      depositAmountPesewas: 75000,
-      cancellationFeePesewas: 0,
-      createdAt: todayString(-5),
+
+    editRoom: (id, updates) => {
+      const updated = get().rooms.map((r) => (r.id === id ? { ...r, ...updates } : r));
+      persist({ rooms: updated });
+      get().addToast(`Room configuration updated`, "success");
     },
-    // 3. Confirmed arrival for today / tomorrow
-    {
-      id: "RES-20260609-1229",
-      guestId: "gst-3",
-      roomTypeId: "rt-suite",
-      roomId: "rm-301",
-      checkInDate: todayString(0),
-      checkOutDate: todayString(4),
-      adults: 1,
-      children: 0,
-      source: ReservationSource.DIRECT_BOOKING,
-      status: ReservationStatus.CONFIRMED,
-      depositAmountPesewas: 150000,
-      cancellationFeePesewas: 0,
-      createdAt: todayString(-3),
+
+    deleteRoom: (id) => {
+      const filtered = get().rooms.filter((r) => r.id !== id);
+      persist({ rooms: filtered });
+      get().addToast("Room deleted from records", "success");
     },
-  ];
 
-  // Map the status of rooms based on active bookings
-  seedRooms.find(r => r.id === "rm-201")!.status = RoomStatus.OCCUPIED;
-  seedRooms.find(r => r.id === "rm-301")!.status = RoomStatus.RESERVED;
-
-  // Let's create preseeded folios for these
-  const folios: Record<string, FolioSettle> = {};
-
-  // For Checked-out Reservation
-  folios["RES-20260601-3921"] = {
-    charges: [
-      { id: "chg-1", description: "Standard Room Rate (3 nights)", amountPesewas: 135000, type: ChargeType.ROOM_REVENUE, createdAt: todayString(-8), postedQuantity: 3 },
-      { id: "chg-2", description: "Mini Bar consumables", amountPesewas: 8500, type: ChargeType.MINIBAR, createdAt: todayString(-6), postedQuantity: 1 },
-      { id: "chg-3", description: "Laundry service (Pressing)", amountPesewas: 4000, type: ChargeType.LAUNDRY, createdAt: todayString(-7), postedQuantity: 1 },
-    ],
-    payments: [
-      { amountPesewas: 45000, method: PaymentMethod.MTN_MOMO, reference: "TXN-MOMO-8329482", timestamp: todayString(-10) + "T12:00:00.000Z" },
-      { amountPesewas: 102500, method: PaymentMethod.CARD, reference: "VISA-AUTH-92049", timestamp: todayString(-5) + "T10:00:00.000Z" },
-    ],
-    settled: true,
-    discountPesewas: 0,
-  };
-
-  // For active Checked-In Reservation
-  folios["RES-20260605-8420"] = {
-    charges: [
-      { id: "chg-4", description: "Deluxe Room Rate (3 nights so far)", amountPesewas: 225000, type: ChargeType.ROOM_REVENUE, createdAt: todayString(-3), postedQuantity: 3 },
-      { id: "chg-5", description: "Jollof Rice (Restaurant/Bar)", amountPesewas: 9500, type: ChargeType.RESTAURANT, createdAt: todayString(-2), postedQuantity: 1 },
-      { id: "chg-6", description: "Club Lager Beer (Restaurant/Bar)", amountPesewas: 4000, type: ChargeType.RESTAURANT, createdAt: todayString(-2), postedQuantity: 1 },
-    ],
-    payments: [
-      { amountPesewas: 75000, method: PaymentMethod.VODAFONE_CASH, reference: "TXN-VOD-10294", timestamp: todayString(-5) + "T14:30:00.000Z" },
-    ],
-    settled: false,
-    discountPesewas: 0,
-  };
-
-  // For Confirmed Reservation
-  folios["RES-20260609-1229"] = {
-    charges: [
-      { id: "chg-7", description: "Prepaid Booking Deposit", amountPesewas: 150000, type: ChargeType.ROOM_REVENUE, createdAt: todayString(-3), postedQuantity: 1 },
-    ],
-    payments: [
-      { amountPesewas: 150000, method: PaymentMethod.BANK_TRANSFER, reference: "BANK-CORE-38294", timestamp: todayString(-3) + "T09:12:00.000Z" },
-    ],
-    settled: false,
-    discountPesewas: 0,
-  };
-
-  // Pre-seed housekeeping tasks
-  const seedHousekeepingTasks: HousekeepingTask[] = [
-    {
-      id: "hk-task-1",
-      roomId: "rm-102",
-      housekeeperId: "stf-2",
-      status: HousekeepingTaskStatus.IN_PROGRESS,
-      notes: "Guest requested extra towels and early make-up",
-      checklist: [
-        { label: "Change sheets", completed: true },
-        { label: "Replenish toiletries", completed: false },
-        { label: "Vaccuum / Sweep floor", completed: true },
-        { label: "Check electronics", completed: false },
-      ],
-      updatedAt: todayString(0) + "T09:00:00.000Z",
+    bulkUpdateRooms: (ids, updates) => {
+      const updated = get().rooms.map((r) => (ids.includes(r.id) ? { ...r, ...updates } : r));
+      persist({ rooms: updated });
+      get().addToast(`Updated ${ids.length} rooms in bulk successfully`, "success");
     },
-    {
-      id: "hk-task-2",
-      roomId: "rm-201",
-      housekeeperId: "stf-2",
-      status: HousekeepingTaskStatus.PENDING,
-      notes: "Daily refresh",
-      checklist: [
-        { label: "Change sheets", completed: false },
-        { label: "Replenish toiletries", completed: false },
-        { label: "Vaccuum / Sweep floor", completed: false },
-        { label: "Check electronics", completed: false },
-      ],
-      updatedAt: todayString(0) + "T08:00:00.000Z",
+
+    bulkDeleteRooms: (ids) => {
+      const filtered = get().rooms.filter((r) => !ids.includes(r.id));
+      persist({ rooms: filtered });
+      get().addToast(`Deleted ${ids.length} rooms from records in bulk`, "success");
     },
-  ];
 
-  // Low preseeded Lost and found
-  const seedLostAndFound: LostAndFoundLog[] = [
-    { id: "lf-1", date: todayString(-6), roomId: "rm-101", description: "Bose Wireless Earbuds (Black)", status: "In Custody", finderName: "Comfort Mensah", notes: "Found resting near headboard" },
-  ];
+    // Guests
+    addGuest: (guestData) => {
+      const id = "gst-" + Math.random().toString(36).substring(2, 6);
+      const guestObj: Guest = { ...guestData, id };
+      persist({
+        guests: [...get().guests, guestObj],
+      });
+      get().addToast(`Registered guest: ${guestObj.fullName}`, "success");
+      return guestObj;
+    },
 
-  const defaults = {
-    propertyProfile: null, // Forces Setup wizard first!
-    currentUser: null,
-    roomTypes: DEFAULT_ROOM_TYPES,
-    rooms: seedRooms,
-    guests: SEED_GUESTS,
-    reservations: seedReservations,
-    housekeepingTasks: seedHousekeepingTasks,
-    lostAndFound: seedLostAndFound,
-    menuItems: SEED_MENU,
-    restaurantOrders: [],
-    conferenceRooms: SEED_CONFERENCE_ROOMS,
-    conferenceBookings: [],
-    amenities: SEED_AMENITIES,
-    amenityBookings: [],
-    staffList: SEED_STAFF,
-    inventoryList: SEED_INVENTORY,
-    stockTransactions: [],
-    folios,
-    toasts: [],
-  };
+    updateGuest: (guest) => {
+      const updated = get().guests.map((g) => (g.id === guest.id ? guest : g));
+      persist({ guests: updated });
+      get().addToast(`Updated details for ${guest.fullName}`, "success");
+    },
 
-  if (parsed) {
-    parsed.toasts = [];
-    return {
-      ...defaults,
-      ...parsed,
-    };
-  }
-
-  return defaults;
-};
-
-// Create state helper to persist on changes
-const saveState = (state: Record<string, any>) => {
-  try {
-    localStorage.setItem("SAD_HOTEL_PERSISTENT_STATE", JSON.stringify(state));
-  } catch (e) {
-    console.error("Failed to persist state:", e);
-  }
-};
-
-export const useHotelStore = create<HotelState>((set, get) => ({
-  ...getInitialState(),
-
-  // Actions
-  initializeSetup: (profile, adminUser) => {
-    const fullProfile: PropertyProfile = {
-      ...profile,
-      setupComplete: true,
-    };
-    const defaultUser = {
-      username: adminUser.username,
-      fullName: adminUser.fullName,
-      role: UserRole.SUPER_ADMIN,
-    };
-
-    set({
-      propertyProfile: fullProfile,
-      currentUser: defaultUser,
-    });
-    saveState(get());
-    get().addToast(`SUCCESS ABOVE DREAMS application initialized successfully. Mode: ${profile.mode}!`, "success");
-  },
-
-  resetAllData: () => {
-    localStorage.removeItem("SAD_HOTEL_PERSISTENT_STATE");
-    const freshState = getInitialState();
-    set({
-      ...freshState,
-    });
-    get().addToast("System state reset completely. Returning to first-launch setup.", "info");
-  },
-
-  loginUser: (username, role) => {
-    // Find staff or assign name
-    const staff = get().staffList.find(s => s.fullName.toLowerCase().includes(username.toLowerCase()) || s.email.toLowerCase().includes(username.toLowerCase()));
-    const fullName = staff ? staff.fullName : username;
-
-    set({
-      currentUser: { username, fullName, role },
-    });
-    get().addToast(`Logged in as ${fullName} (${role})`, "success");
-    return true;
-  },
-
-  logoutUser: () => {
-    set({ currentUser: null });
-    get().addToast("Logged out successfully", "info");
-  },
-
-  addToast: (message, type = "success") => {
-    const id = uuid();
-    set((state) => ({
-      toasts: [...state.toasts, { id, message, type }],
-    }));
-    // Auto-remove after 4 seconds
-    setTimeout(() => {
-      get().removeToast(id);
-    }, 4000);
-  },
-
-  removeToast: (id) => {
-    set((state) => ({
-      toasts: state.toasts.filter((t) => t.id !== id),
-    }));
-  },
-
-  addRoom: (roomData) => {
-    const newRoom: Room = {
-      ...roomData,
-      id: `rm-${uuid()}`,
-      status: RoomStatus.AVAILABLE,
-      housekeepingStatus: HousekeepingStatus.CLEAN,
-      extraBedAdded: false,
-      extraBedPricePesewas: 12000,
-    };
-
-    set((state) => {
-      const nextRooms = [...state.rooms, newRoom];
-      const next = { ...state, rooms: nextRooms };
-      saveState(next);
-      return next;
-    });
-
-    get().addToast(`Room ${roomData.roomNumber} added to floor plan.`, "success");
-  },
-
-  bulkCreateRooms: (start, end, floor, roomTypeId, building) => {
-    const added: Room[] = [];
-    for (let r = start; r <= end; r++) {
-      // Check if room number already exists
-      const exists = get().rooms.some(rm => rm.roomNumber === r.toString());
-      if (!exists) {
-        added.push({
-          id: `rm-${uuid()}`,
-          roomNumber: r.toString(),
-          floor,
-          building: building || "Main Building Block",
-          roomTypeId,
-          status: RoomStatus.AVAILABLE,
-          housekeepingStatus: HousekeepingStatus.CLEAN,
-          extraBedAdded: false,
-          extraBedPricePesewas: 12000,
-        });
-      }
-    }
-
-    set((state) => {
-      const nextRooms = [...state.rooms, ...added];
-      const next = { ...state, rooms: nextRooms };
-      saveState(next);
-      return next;
-    });
-
-    get().addToast(`Successfully batch created ${added.length} rooms for ${floor}.`, "success");
-  },
-
-  updateRoomStatus: (roomId, status) => {
-    set((state) => {
-      const nextRooms = state.rooms.map((rm) =>
-        rm.id === roomId ? { ...rm, status } : rm
-      );
-      const next = { ...state, rooms: nextRooms };
-      saveState(next);
-      return next;
-    });
-  },
-
-  updateRoomHousekeeping: (roomId, status) => {
-    set((state) => {
-      const nextRooms = state.rooms.map((rm) =>
-        rm.id === roomId ? { ...rm, housekeepingStatus: status } : rm
-      );
-      const next = { ...state, rooms: nextRooms };
-      saveState(next);
-      return next;
-    });
-  },
-
-  toggleExtraBed: (roomId, active, pricePesewas) => {
-    set((state) => {
-      const nextRooms = state.rooms.map((rm) =>
-        rm.id === roomId
-          ? { ...rm, extraBedAdded: active, extraBedPricePesewas: pricePesewas }
-          : rm
-      );
-      // If checked in, auto-add or modify folio charge
-      const targetRoom = state.rooms.find(r => r.id === roomId);
-      if (targetRoom && targetRoom.status === RoomStatus.OCCUPIED) {
-        // Find checked-in reservation
-        const activeRes = state.reservations.find(re => re.roomId === roomId && re.status === ReservationStatus.CHECKED_IN);
-        if (activeRes) {
-          if (active) {
-            // Add extra bed charge
-            const newCharge: FolioCharge = {
-              id: `chg-${uuid()}`,
-              description: `Extra Bed Setup charge on Room ${targetRoom.roomNumber}`,
-              amountPesewas: pricePesewas,
-              type: ChargeType.EXTRA_BED,
-              createdAt: new Date().toISOString(),
-              postedQuantity: 1,
-            };
-            const currentFolio = state.folios[activeRes.id] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-            state.folios[activeRes.id] = {
-              ...currentFolio,
-              charges: [...currentFolio.charges, newCharge],
-            };
-          } else {
-            // Remove extra bed charge
-            const currentFolio = state.folios[activeRes.id];
-            if (currentFolio) {
-              currentFolio.charges = currentFolio.charges.filter(ch => ch.type !== ChargeType.EXTRA_BED);
-            }
-          }
+    editGuest: (id, updates) => {
+      const updated = get().guests.map((g) => {
+        if (g.id === id) {
+          const guestObj = { ...g, ...updates };
+          return guestObj;
         }
-      }
-      const next = { ...state, rooms: nextRooms };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Extra Bed ${active ? "added" : "removed"} for Room`, "info");
-  },
+        return g;
+      });
+      persist({ guests: updated });
+      get().addToast(`Updated guest information successfully.`, "success");
+    },
 
-  addRoomType: (roomType) => {
-    set((state) => {
-      const nextTypes = [...state.roomTypes, roomType];
-      const next = { ...state, roomTypes: nextTypes };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Created room type ${roomType.name}`, "success");
-  },
+    deleteGuest: (id) => {
+      const guestObj = get().guests.find((g) => g.id === id);
+      const name = guestObj ? guestObj.fullName : "";
+      const updated = get().guests.filter((g) => g.id !== id);
+      persist({ guests: updated });
+      get().addToast(`Deleted guest record for ${name || "user"}.`, "success");
+    },
 
-  addGuest: (guestData) => {
-    const newGuest: Guest = {
-      ...guestData,
-      id: `gst-${uuid()}`,
-    };
-    set((state) => {
-      const nextGuests = [...state.guests, newGuest];
-      const next = { ...state, guests: nextGuests };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Guest Profile for ${newGuest.fullName} established.`, "success");
-    return newGuest;
-  },
+    // Reservations
+    createReservation: (resData) => {
+      const id = generateReservationNumber();
+      const status = (resData as any).status || ReservationStatus.CONFIRMED;
 
-  updateGuest: (guest) => {
-    set((state) => {
-      const nextGuests = state.guests.map((g) => (g.id === guest.id ? guest : g));
-      const next = { ...state, guests: nextGuests };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Profile for ${guest.fullName} updated.`, "success");
-  },
-
-  createReservation: (resData) => {
-    const defaultResId = `RES-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newRes: Reservation = {
-      ...resData,
-      id: defaultResId,
-      cancellationFeePesewas: 0,
-      createdAt: new Date().toISOString(),
-    };
-
-    set((state) => {
-      const nextReservations = [...state.reservations, newRes];
-      // Create associated folio with immediate deposit recorded if there is one
-      const folioCharges: FolioCharge[] = [];
-      const folioPayments: Array<{ amountPesewas: number; method: PaymentMethod; timestamp: string }> = [];
-
-      if (newRes.depositAmountPesewas > 0) {
-        folioCharges.push({
-          id: `chg-${uuid()}`,
-          description: "Advance Deposit Paid",
-          amountPesewas: newRes.depositAmountPesewas,
-          type: ChargeType.ROOM_REVENUE,
-          createdAt: new Date().toISOString(),
-          postedQuantity: 1,
-        });
-        folioPayments.push({
-          amountPesewas: newRes.depositAmountPesewas,
-          method: PaymentMethod.CASH, // Default Cash or based on user details
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      state.folios[defaultResId] = {
-        charges: folioCharges,
-        payments: folioPayments,
-        settled: false,
-        discountPesewas: 0,
-      };
-
-      // update Room availability status to Reserved if roomId is preassigned and status confirms
-      let updatedRooms = state.rooms;
-      if (newRes.roomId && newRes.status === ReservationStatus.CONFIRMED) {
-        updatedRooms = state.rooms.map(rm =>
-          rm.id === newRes.roomId ? { ...rm, status: RoomStatus.RESERVED } : rm
-        );
-      }
-
-      const next = { ...state, reservations: nextReservations, rooms: updatedRooms };
-      saveState(next);
-      return next;
-    });
-
-    get().addToast(`Reservation ${defaultResId} confirmed!`, "success");
-    return newRes;
-  },
-
-  updateReservationStatus: (id, status) => {
-    set((state) => {
-      const activeRes = state.reservations.find(re => re.id === id);
-      if (!activeRes) return state;
-
-      const nextReservations = state.reservations.map((re) =>
-        re.id === id ? { ...re, status } : re
-      );
-
-      let nextRooms = state.rooms;
-      const rId = activeRes.roomId;
-
-      if (rId) {
-        if (status === ReservationStatus.CHECKED_IN) {
-          nextRooms = state.rooms.map(rm =>
-            rm.id === rId ? { ...rm, status: RoomStatus.OCCUPIED, housekeepingStatus: HousekeepingStatus.CLEAN } : rm
-          );
-          // Post the initial room charge right away
-          const charges = state.folios[id]?.charges || [];
-          const roomType = state.roomTypes.find(rt => rt.id === activeRes.roomTypeId);
-          const roomObj = state.rooms.find(r => r.id === rId);
-
-          const daysCount = Math.max(1, Math.ceil((new Date(activeRes.checkOutDate).getTime() - new Date(activeRes.checkInDate).getTime()) / (1000 * 60 * 60 * 24)));
-          const totalCost = (roomType?.basePricePesewas || 0) * daysCount;
-
-          const existsRoomCharge = charges.some(ch => ch.type === ChargeType.ROOM_REVENUE && ch.description.includes("Room Rate"));
-          if (!existsRoomCharge) {
-            const newCharge: FolioCharge = {
-              id: `chg-${uuid()}`,
-              description: `Room Rate (${roomType?.name || "Suite"}) - ${daysCount} nights`,
-              amountPesewas: totalCost,
-              type: ChargeType.ROOM_REVENUE,
-              createdAt: new Date().toISOString(),
-              postedQuantity: daysCount,
-            };
-            const currentFolio = state.folios[id] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-            state.folios[id] = {
-              ...currentFolio,
-              charges: [...currentFolio.charges, newCharge],
-            };
-          }
-        } else if (status === ReservationStatus.CHECKED_OUT) {
-          nextRooms = state.rooms.map(rm =>
-            rm.id === rId
-              ? { ...rm, status: RoomStatus.AVAILABLE, housekeepingStatus: HousekeepingStatus.DIRTY }
-              : rm
-          );
-        } else if (status === ReservationStatus.CANCELLED || status === ReservationStatus.NO_SHOW) {
-          nextRooms = state.rooms.map(rm =>
-            rm.id === rId ? { ...rm, status: RoomStatus.AVAILABLE } : rm
-          );
-        }
-      }
-
-      const next = { ...state, reservations: nextReservations, rooms: nextRooms };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Booking status updated to ${status}`, "info");
-  },
-
-  modifyReservation: (updated) => {
-    set((state) => {
-      const nextReservations = state.reservations.map(r => r.id === updated.id ? updated : r);
-      const next = { ...state, reservations: nextReservations };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Booking ${updated.id} modified successfully.`, "success");
-  },
-
-  cancelReservation: (id) => {
-    set((state) => {
-      const res = state.reservations.find(r => r.id === id);
-      if (!res) return state;
-
-      // Cancellation Policy auto-calculation:
-      // Free cancellation 48 hours before check-in date. Otherwise, charge 50% of the room booking value as cancellation fee.
-      const checkInTime = new Date(res.checkInDate).getTime();
-      const cancelTime = new Date().getTime();
-      const diffHrs = (checkInTime - cancelTime) / (1000 * 60 * 60);
-
-      let cancelFee = 0;
-      if (diffHrs < 48) {
-        const roomType = state.roomTypes.find(rt => rt.id === res.roomTypeId);
-        const nights = Math.max(1, Math.ceil((new Date(res.checkOutDate).getTime() - new Date(res.checkInDate).getTime()) / (1000 * 60 * 60 * 24)));
-        const basePrice = roomType ? roomType.basePricePesewas : 50000;
-        cancelFee = Math.floor(0.5 * basePrice * nights);
-      }
-
-      const nextReservations = state.reservations.map(r =>
-        r.id === id
-          ? { ...r, status: ReservationStatus.CANCELLED, cancellationFeePesewas: cancelFee }
-          : r
-      );
-
-      // Re-avail room
-      let nextRooms = state.rooms;
-      if (res.roomId) {
-        nextRooms = state.rooms.map(rm => rm.id === res.roomId ? { ...rm, status: RoomStatus.AVAILABLE } : rm);
-      }
-
-      // Record charge to folio for cancellation fee if applicable
-      if (cancelFee > 0) {
-        const currentFolio = state.folios[id] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-        currentFolio.charges.push({
-          id: `chg-${uuid()}`,
-          description: "Reservation Cancellation Fee (Under 48 Hours Policy)",
-          amountPesewas: cancelFee,
-          type: ChargeType.OTHER,
-          createdAt: new Date().toISOString(),
-          postedQuantity: 1,
-        });
-        state.folios[id] = currentFolio;
-      }
-
-      const next = { ...state, reservations: nextReservations, rooms: nextRooms };
-      saveState(next);
-      return next;
-    });
-    get().addToast("Reservation cancelled according to property terms.", "info");
-  },
-
-  getOrCreateFolio: (reservationId) => {
-    const state = get();
-    if (!state.folios[reservationId]) {
-      // Create empty
-      state.folios[reservationId] = {
-        charges: [],
-        payments: [],
-        settled: false,
-        discountPesewas: 0,
-      };
-    }
-    return state.folios[reservationId];
-  },
-
-  addFolioCharge: (reservationId, chargeData) => {
-    set((state) => {
-      const folio = state.folios[reservationId] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-      const newCharge: FolioCharge = {
-        ...chargeData,
-        id: `chg-${uuid()}`,
+      const newRes: Reservation = {
+        ...resData,
+        id,
+        status,
         createdAt: new Date().toISOString(),
-      };
+        extraCharges: [],
+      } as any;
 
-      const nextFolios = {
-        ...state.folios,
-        [reservationId]: {
-          ...folio,
-          charges: [...folio.charges, newCharge],
-        },
-      };
-
-      const next = { ...state, folios: nextFolios };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Added: ${chargeData.description} to folio.`, "success");
-  },
-
-  removeFolioCharge: (reservationId, chargeId) => {
-    set((state) => {
-      const folio = state.folios[reservationId];
-      if (!folio) return state;
-
-      const nextFolios = {
-        ...state.folios,
-        [reservationId]: {
-          ...folio,
-          charges: folio.charges.filter((ch) => ch.id !== chargeId),
-        },
-      };
-      const next = { ...state, folios: nextFolios };
-      saveState(next);
-      return next;
-    });
-    get().addToast("Charge removed from running folio.", "info");
-  },
-
-  recordFolioPayment: (reservationId, amountPesewas, method, reference) => {
-    set((state) => {
-      const folio = state.folios[reservationId] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-      const newPayment = {
-        amountPesewas,
-        method,
-        reference,
-        timestamp: new Date().toISOString(),
-      };
-
-      const nextFolios = {
-        ...state.folios,
-        [reservationId]: {
-          ...folio,
-          payments: [...folio.payments, newPayment],
-        },
-      };
-      const next = { ...state, folios: nextFolios };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Received payment of ₵${(amountPesewas / 100).toFixed(2)} via ${method}`, "success");
-  },
-
-  applyFolioDiscount: (reservationId, discountPesewas) => {
-    set((state) => {
-      const folio = state.folios[reservationId] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-      const nextFolios = {
-        ...state.folios,
-        [reservationId]: {
-          ...folio,
-          discountPesewas,
-        },
-      };
-      const next = { ...state, folios: nextFolios };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Applied manager discount of ₵${(discountPesewas / 100).toFixed(2)}`, "success");
-  },
-
-  settleFolio: (reservationId) => {
-    set((state) => {
-      const folio = state.folios[reservationId];
-      if (!folio) return state;
-
-      const nextFolios = {
-        ...state.folios,
-        [reservationId]: {
-          ...folio,
-          settled: true,
-        },
-      };
-      const next = { ...state, folios: nextFolios };
-      saveState(next);
-      return next;
-    });
-    get().addToast("Guest Folio settled and marked Closed.", "success");
-  },
-
-  // Housekeeping Task actions
-  assignHousekeepingTask: (roomId, housekeeperId, notes) => {
-    const newTask: HousekeepingTask = {
-      id: `task-${uuid()}`,
-      roomId,
-      housekeeperId,
-      status: HousekeepingTaskStatus.PENDING,
-      notes,
-      checklist: [
-        { label: "Change bed linens & sheets", completed: false },
-        { label: "Empty dustbins & trash", completed: false },
-        { label: "Replenish toiletries & details", completed: false },
-        { label: "Vacuum, sweep & wash floors", completed: false },
-        { label: "Inspect AC and TV remote buttons", completed: false },
-      ],
-      updatedAt: new Date().toISOString(),
-    };
-
-    set((state) => {
-      const nextTasks = [newTask, ...state.housekeepingTasks.filter(t => t.roomId !== roomId || t.status === HousekeepingTaskStatus.INSPECTED)];
-      const nextRooms = state.rooms.map(rm => rm.id === roomId ? { ...rm, housekeepingStatus: HousekeepingStatus.DIRTY } : rm);
-      const next = { ...state, housekeepingTasks: nextTasks, rooms: nextRooms };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Room assigned for cleaning.`, "success");
-  },
-
-  updateHousekeepingTask: (taskId, status, notes, checklist) => {
-    set((state) => {
-      const nextTasks = state.housekeepingTasks.map((t) => {
-        if (t.id === taskId) {
-          const uTask = {
-            ...t,
-            status,
-            notes: notes !== undefined ? notes : t.notes,
-            checklist: checklist || t.checklist,
-            updatedAt: new Date().toISOString(),
-          };
-          return uTask;
-        }
-        return t;
-      });
-
-      // Synchronize Room Status
-      const task = state.housekeepingTasks.find(ts => ts.id === taskId);
-      let nextRooms = state.rooms;
-      if (task) {
-        if (status === HousekeepingTaskStatus.DONE) {
-          nextRooms = state.rooms.map(rm => rm.id === task.roomId ? { ...rm, housekeepingStatus: HousekeepingStatus.INSPECTING } : rm);
-        } else if (status === HousekeepingTaskStatus.IN_PROGRESS) {
-          nextRooms = state.rooms.map(rm => rm.id === task.roomId ? { ...rm, housekeepingStatus: HousekeepingStatus.DIRTY } : rm);
-        } else if (status === HousekeepingTaskStatus.INSPECTED) {
-          nextRooms = state.rooms.map(rm => rm.id === task.roomId ? { ...rm, housekeepingStatus: HousekeepingStatus.INSPECTED } : rm);
-        }
-      }
-
-      const next = { ...state, housekeepingTasks: nextTasks, rooms: nextRooms };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Housekeeping status updated to: ${status}`, "success");
-  },
-
-  addLostAndFoundItem: (item) => {
-    const newItem: LostAndFoundLog = {
-      ...item,
-      id: `lf-${uuid()}`,
-    };
-    set((state) => {
-      const next = { ...state, lostAndFound: [newItem, ...state.lostAndFound] };
-      saveState(next);
-      return next;
-    });
-    get().addToast("Item registered to Lost & Found Registry", "success");
-  },
-
-  updateLostAndFoundStatus: (id, status, notes, returnedTo) => {
-    set((state) => {
-      const mList = state.lostAndFound.map((i) =>
-        i.id === id ? { ...i, status, notes: notes || i.notes, returnedToName: returnedTo } : i
-      );
-      const next = { ...state, lostAndFound: mList };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Lost & Found status is now: ${status}`, "success");
-  },
-
-  addMenuItem: (item) => {
-    set((state) => {
-      const next = { ...state, menuItems: [...state.menuItems, item] };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`${item.name} added to Restaurant Menu`, "success");
-  },
-
-  updateMenuItemAvailability: (id, available) => {
-    set((state) => {
-      const mList = state.menuItems.map((it) => it.id === id ? { ...it, available } : it);
-      const next = { ...state, menuItems: mList };
-      saveState(next);
-      return next;
-    });
-  },
-
-  placeRestaurantOrder: (orderData) => {
-    const orderNo = `RST-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newOrder: RestaurantOrder = {
-      ...orderData,
-      id: `ord-${uuid()}`,
-      orderNumber: orderNo,
-      timestamp: new Date().toISOString(),
-    };
-
-    set((state) => {
-      const updatedOrders = [newOrder, ...state.restaurantOrders];
-
-      // If active guest room - post charge to guest folio
-      if (newOrder.roomNumber && newOrder.status === "Charged to Room") {
-        // Find checked-in guest in that room
-        const activeRes = state.reservations.find(re => {
-          const rm = state.rooms.find(r => r.id === re.roomId);
-          return rm?.roomNumber === newOrder.roomNumber && re.status === ReservationStatus.CHECKED_IN;
-        });
-
-        if (activeRes) {
-          const folio = state.folios[activeRes.id] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-          const restCharge: FolioCharge = {
-            id: `chg-${uuid()}`,
-            description: `Restaurant Order ${orderNo} - Charged to Room`,
-            amountPesewas: newOrder.totalPesewas,
-            type: ChargeType.RESTAURANT,
-            createdAt: new Date().toISOString(),
-            postedQuantity: 1,
-          };
-          state.folios[activeRes.id] = {
-            ...folio,
-            charges: [...folio.charges, restCharge],
-          };
-        }
-      }
-
-      const next = { ...state, restaurantOrders: updatedOrders };
-      saveState(next);
-      return next;
-    });
-
-    get().addToast(`Restaurant Order ${orderNo} created.`, "success");
-    return newOrder;
-  },
-
-  updateOrderStatus: (id, status) => {
-    set((state) => {
-      const updatedOrders = state.restaurantOrders.map((ord) => {
-        if (ord.id === id) {
-          const updated = { ...ord, status };
-          // If charged to room on this transition
-          if (status === "Charged to Room" && ord.roomNumber && ord.status !== "Charged to Room") {
-            const activeRes = state.reservations.find(re => {
-              const rm = state.rooms.find(r => r.id === re.roomId);
-              return rm?.roomNumber === ord.roomNumber && re.status === ReservationStatus.CHECKED_IN;
-            });
-            if (activeRes) {
-              const folio = state.folios[activeRes.id] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-              folio.charges.push({
-                id: `chg-${uuid()}`,
-                description: `Restaurant Bill Order ${ord.orderNumber}`,
-                amountPesewas: ord.totalPesewas,
-                type: ChargeType.RESTAURANT,
-                createdAt: new Date().toISOString(),
-                postedQuantity: 1,
-              });
-              state.folios[activeRes.id] = folio;
-            }
-          }
-          return updated;
-        }
-        return ord;
-      });
-
-      const next = { ...state, restaurantOrders: updatedOrders };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Restaurant order status is now: ${status}`, "success");
-  },
-
-  addConferenceRoom: (croom) => {
-    set((state) => {
-      const next = { ...state, conferenceRooms: [...state.conferenceRooms, croom] };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Conference room '${croom.name}' created.`, "success");
-  },
-
-  bookConferenceRoom: (bookingData) => {
-    const bookingId = `CNF-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newBooking: ConferenceBooking = {
-      ...bookingData,
-      id: bookingId,
-      status: "Confirmed",
-    };
-
-    set((state) => {
-      // Create associated folio/charges for guest if assigned to room, or standalone invoice
-      const nextBookings = [newBooking, ...state.conferenceBookings];
-      // Check if client is staying in-house
-      const inHouseGuest = state.guests.find(g => g.fullName.toLowerCase() === newBooking.clientName.toLowerCase());
-      if (inHouseGuest) {
-        // Look for checked in res
-        const activeRes = state.reservations.find(r => r.guestId === inHouseGuest.id && r.status === ReservationStatus.CHECKED_IN);
-        if (activeRes) {
-          // charge to that room folio
-          const folio = state.folios[activeRes.id] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-          folio.charges.push({
-            id: `chg-${uuid()}`,
-            description: `Conference Booking (${newBooking.durationSlot}) - ${newBooking.layoutChoice}`,
-            amountPesewas: newBooking.totalPricePesewas,
-            type: ChargeType.CONFERENCE,
-            createdAt: new Date().toISOString(),
-            postedQuantity: 1,
-          });
-          state.folios[activeRes.id] = folio;
-          get().addToast("Conference fee posted to running Room Folio", "info");
-        }
-      }
-
-      const next = { ...state, conferenceBookings: nextBookings };
-      saveState(next);
-      return next;
-    });
-
-    get().addToast(`Conference reservation confirmed ${bookingId}`, "success");
-    return newBooking;
-  },
-
-  updateConferenceStatus: (id, status) => {
-    set((state) => {
-      const next = {
-        ...state,
-        conferenceBookings: state.conferenceBookings.map((b) => b.id === id ? { ...b, status } : b),
-      };
-      saveState(next);
-      return next;
-    });
-  },
-
-  bookAmenity: (bookingData) => {
-    const id = `AMN-${uuid()}`;
-    const newBooking: AmenityBooking = {
-      ...bookingData,
-      id,
-      status: "Confirmed",
-    };
-
-    set((state) => {
-      const updated = [newBooking, ...state.amenityBookings];
-
-      // Post charge to room if requested
-      if (newBooking.chargedToRoom && newBooking.roomNumber) {
-        const activeRes = state.reservations.find(re => {
-          const rm = state.rooms.find(r => r.id === re.roomId);
-          return rm?.roomNumber === newBooking.roomNumber && re.status === ReservationStatus.CHECKED_IN;
-        });
-
-        if (activeRes) {
-          const amenityObj = state.amenities.find(a => a.id === newBooking.amenityId);
-          const folio = state.folios[activeRes.id] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-          const amenityCharge: FolioCharge = {
-            id: `chg-${uuid()}`,
-            description: `Amenity Session Booking: ${amenityObj?.name || "Spa/Pool"}`,
-            amountPesewas: newBooking.amountPesewas,
-            type: ChargeType.AMENITY,
-            createdAt: new Date().toISOString(),
-            postedQuantity: 1,
-          };
-          state.folios[activeRes.id] = {
-            ...folio,
-            charges: [...folio.charges, amenityCharge],
-          };
-        }
-      }
-
-      const next = { ...state, amenityBookings: updated };
-      saveState(next);
-      return next;
-    });
-
-    get().addToast("Spa/Amenity reservation secured.", "success");
-    return newBooking;
-  },
-
-  completeAmenityBooking: (id) => {
-    set((state) => {
-      const updated = state.amenityBookings.map((b) => b.id === id ? { ...b, status: "Completed" as const, paid: b.chargedToRoom ? b.paid : true } : b);
-      const next = { ...state, amenityBookings: updated };
-      saveState(next);
-      return next;
-    });
-    get().addToast("Session marked completed.", "success");
-  },
-
-  addStaff: (staffData) => {
-    const newStaff: Staff = {
-      ...staffData,
-      id: `stf-${uuid()}`,
-      clockedIn: false,
-    };
-    set((state) => {
-      const next = { ...state, staffList: [...state.staffList, newStaff] };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Employee records established for ${staffData.fullName}`, "success");
-  },
-
-  updateStaffStatus: (id, status) => {
-    set((state) => {
-      const next = {
-        ...state,
-        staffList: state.staffList.map((s) => s.id === id ? { ...s, status } : s),
-      };
-      saveState(next);
-      return next;
-    });
-  },
-
-  clockStaff: (id, clockIn) => {
-    set((state) => {
-      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-      const nextList = state.staffList.map((s) => {
-        if (s.id === id) {
+      // Update room status is Occupied if checked-in instantly, or Reserved if confirmed
+      const updatedRooms = get().rooms.map((rm) => {
+        if (rm.id === resData.roomId) {
           return {
-            ...s,
-            clockedIn: clockIn,
-            clockInTime: clockIn ? time : s.clockInTime,
-            clockOutTime: clockIn ? undefined : time,
+            ...rm,
+            status: status === ReservationStatus.CHECKED_IN ? RoomStatus.OCCUPIED : RoomStatus.RESERVED,
           };
         }
-        return s;
+        return rm;
       });
-      const next = { ...state, staffList: nextList };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Employee status clocked ${clockIn ? "IN" : "OUT"}`, "info");
-  },
 
-  addInventoryItem: (item) => {
-    const newItem: InventoryItem = {
-      ...item,
-      id: `inv-${uuid()}`,
-      stockLevel: 0,
-    };
-    set((state) => {
-      const next = { ...state, inventoryList: [...state.inventoryList, newItem] };
-      saveState(next);
-      return next;
-    });
-    get().addToast(`Item [${item.name}] cataloged.`, "success");
-  },
+      persist({
+        reservations: [...get().reservations, newRes],
+        rooms: updatedRooms,
+      });
 
-  recordStockTransaction: (transData) => {
-    const newTrans: StockTransaction = {
-      ...transData,
-      id: `trn-${uuid()}`,
-      timestamp: new Date().toISOString(),
-    };
+      get().addToast(`Booking ${id} entered successfully.`, "success");
+      return newRes;
+    },
 
-    set((state) => {
-      const activeItem = state.inventoryList.find((i) => i.id === transData.itemId);
-      if (!activeItem) return state;
+    updateReservationStatus: (id, status, cancelFeePesewas = 0) => {
+      const reservation = get().reservations.find((r) => r.id === id);
+      if (!reservation) return;
 
-      const qtyDelta = transData.type === "IN" ? transData.quantity : -transData.quantity;
-      const nextStockLevel = Math.max(0, activeItem.stockLevel + qtyDelta);
+      const originalRoomId = reservation.roomId;
 
-      // Low Stock checks on subtract
-      if (transData.type === "OUT" && nextStockLevel <= activeItem.reorderLevel) {
-        // Register instant warning!
-        setTimeout(() => {
-          get().addToast(`LOW STOCK WARNING: [${activeItem.name}] stock fallen to ${nextStockLevel}!`, "error");
-        }, 100);
+      const updatedReservations = get().reservations.map((res) => {
+        if (res.id === id) {
+          const u: Partial<Reservation> = { status };
+          if (cancelFeePesewas > 0) {
+            u.cancellationFeePesewas = cancelFeePesewas;
+          }
+          return { ...res, ...u };
+        }
+        return res;
+      });
+
+      // Update Rooms
+      const updatedRooms = get().rooms.map((rm) => {
+        if (rm.id === originalRoomId) {
+          if (status === ReservationStatus.CHECKED_IN) {
+            return { ...rm, status: RoomStatus.OCCUPIED };
+          } else if (status === ReservationStatus.CHECKED_OUT) {
+            // Becomes Available but DIRTY upon checklist checkout rules!
+            return { ...rm, status: RoomStatus.AVAILABLE, housekeepingStatus: HousekeepingStatus.DIRTY };
+          } else if (status === ReservationStatus.CANCELLED || status === ReservationStatus.NO_SHOW) {
+            return { ...rm, status: RoomStatus.AVAILABLE };
+          }
+        }
+        return rm;
+      });
+
+      // Calculate checkout dynamic billing if setting checked-out
+      const updatedBills = { ...get().bills };
+      if (status === ReservationStatus.CHECKED_OUT) {
+        // Build/save default bill
+        const dIn = new Date(reservation.checkInDate);
+        const dOut = new Date(reservation.checkOutDate);
+        let nights = Math.max(1, Math.round((dOut.getTime() - dIn.getTime()) / (1000 * 3600 * 24)));
+        const targetRoom = get().rooms.find((r) => r.id === originalRoomId);
+        const ratePerNight = targetRoom?.pricePesewas || 45000;
+        const accommodationSum = nights * ratePerNight;
+        const extraChargesSum = reservation.extraCharges.reduce((acc, current) => acc + current.amountPesewas, 0);
+
+        const vatRate = get().propertyProfile?.vatRate || 15;
+        const sumBeforeVatAndDisc = accommodationSum + extraChargesSum;
+        const disc = updatedBills[id]?.discountPesewas || 0;
+        const subtotalWithDisc = Math.max(0, sumBeforeVatAndDisc - disc);
+        const calculatedVat = Math.round(subtotalWithDisc * (vatRate / 100));
+        const grandTotal = subtotalWithDisc + calculatedVat;
+
+        updatedBills[id] = {
+          id: `Bill-${id}`,
+          reservationId: id,
+          roomChargesPesewas: accommodationSum,
+          extrasChargesPesewas: extraChargesSum,
+          discountPesewas: disc,
+          vatPesewas: calculatedVat,
+          totalPesewas: grandTotal,
+          paid: updatedBills[id]?.paid || false,
+          paymentMethod: updatedBills[id]?.paymentMethod,
+          paymentReference: updatedBills[id]?.paymentReference,
+          settledAt: updatedBills[id]?.settledAt,
+        };
       }
 
-      const nextInventory = state.inventoryList.map((it) =>
-        it.id === transData.itemId ? { ...it, stockLevel: nextStockLevel } : it
-      );
-
-      const next = {
-        ...state,
-        inventoryList: nextInventory,
-        stockTransactions: [newTrans, ...state.stockTransactions],
-      };
-      saveState(next);
-      return next;
-    });
-
-    get().addToast(`Stock Transaction registered successfully`, "success");
-  },
-
-  // Auto-posting nightly room charges background emulation
-  triggerNightlyRoomCharges: () => {
-    set((state) => {
-      let postedCount = 0;
-      // Get all checked-in reservations
-      const inHouseBookings = state.reservations.filter(r => r.status === ReservationStatus.CHECKED_IN);
-
-      const updatedFolios = { ...state.folios };
-
-      inHouseBookings.forEach((booking) => {
-        const roomObj = state.rooms.find(rm => rm.id === booking.roomId);
-        const roomType = state.roomTypes.find(rt => rt.id === booking.roomTypeId);
-        if (!roomObj || !roomType) return;
-
-        const baseDailyRate = roomType.basePricePesewas;
-        const extraBedDaily = roomObj.extraBedAdded ? roomObj.extraBedPricePesewas : 0;
-
-        const folio = updatedFolios[booking.id] || { charges: [], payments: [], settled: false, discountPesewas: 0 };
-
-        // Post regular nightly rate
-        const dateToday = new Date().toLocaleDateString("en-GB");
-        folio.charges.push({
-          id: `chg-${uuid()}`,
-          description: `Nightly Room Charge (${roomObj.roomNumber}) - Auto posted ${dateToday}`,
-          amountPesewas: baseDailyRate,
-          type: ChargeType.ROOM_REVENUE,
-          createdAt: new Date().toISOString(),
-          postedQuantity: 1,
-        });
-
-        // Extra bed rates if active
-        if (roomObj.extraBedAdded) {
-          folio.charges.push({
-            id: `chg-${uuid()}`,
-            description: `Extra Bed Daily Rate Charge - Auto posted ${dateToday}`,
-            amountPesewas: extraBedDaily,
-            type: ChargeType.EXTRA_BED,
-            createdAt: new Date().toISOString(),
-            postedQuantity: 1,
-          });
-        }
-
-        updatedFolios[booking.id] = folio;
-        postedCount++;
+      persist({
+        reservations: updatedReservations,
+        rooms: updatedRooms,
+        bills: updatedBills,
       });
 
-      const next = { ...state, folios: updatedFolios };
-      saveState(next);
+      get().addToast(`Booking status updated to ${status}`, "success");
+    },
 
-      // Show toast
-      setTimeout(() => {
-        get().addToast(`SUCCESS ABOVE DREAMS Nightly Scheduler Ran: Room charges posted to ${postedCount} active in-house guest folios.`, "success");
-      }, 100);
+    editReservation: (id, checkInDate, checkOutDate, roomId, adults, specialRequests) => {
+      const prevRes = get().reservations.find(r => r.id === id);
+      if (!prevRes) return;
 
-      return next;
-    });
-  },
-}));
+      const previousRoomId = prevRes.roomId;
+
+      const updatedReservations = get().reservations.map((res) => {
+        if (res.id === id) {
+          return {
+            ...res,
+            checkInDate,
+            checkOutDate,
+            roomId,
+            adults,
+            specialRequests,
+          };
+        }
+        return res;
+      });
+
+      // Free previous room, book the new one
+      const updatedRooms = get().rooms.map((rm) => {
+        if (rm.id === previousRoomId && previousRoomId !== roomId) {
+          return { ...rm, status: RoomStatus.AVAILABLE };
+        }
+        if (rm.id === roomId) {
+          return {
+            ...rm,
+            status: prevRes.status === ReservationStatus.CHECKED_IN ? RoomStatus.OCCUPIED : RoomStatus.RESERVED,
+          };
+        }
+        return rm;
+      });
+
+      persist({
+        reservations: updatedReservations,
+        rooms: updatedRooms,
+      });
+
+      get().addToast("Booking modified successfully.", "success");
+    },
+
+    addExtraCharge: (reservationId, label, amountPesewas) => {
+      const updatedResList = get().reservations.map((res) => {
+        if (res.id === reservationId) {
+          const newChg: ExtraCharge = {
+            id: "ex-" + Math.random().toString(36).substring(2, 6),
+            label,
+            amountPesewas,
+            createdAt: new Date().toISOString(),
+          };
+          return {
+            ...res,
+            extraCharges: [...res.extraCharges, newChg],
+          };
+        }
+        return res;
+      });
+
+      persist({ reservations: updatedResList });
+      // Recalculate bill for that booking if it is checked out
+      const bill = get().bills[reservationId];
+      if (bill) {
+        get().calculateBill(reservationId, bill.discountPesewas);
+      }
+      get().addToast(`Charge "${label}" added to bill`, "success");
+    },
+
+    removeExtraCharge: (reservationId, chargeId) => {
+      const updatedResList = get().reservations.map((res) => {
+        if (res.id === reservationId) {
+          return {
+            ...res,
+            extraCharges: res.extraCharges.filter((c) => c.id !== chargeId),
+          };
+        }
+        return res;
+      });
+
+      persist({ reservations: updatedResList });
+      const bill = get().bills[reservationId];
+      if (bill) {
+        get().calculateBill(reservationId, bill.discountPesewas);
+      }
+      get().addToast(`Extra charge removed`, "success");
+    },
+
+    // Housekeeping
+    assignRoomCleaning: (roomId, housekeeperId) => {
+      const updatedRooms = get().rooms.map((rm) => {
+        if (rm.id === roomId) {
+          return {
+            ...rm,
+            assignedHousekeeperId: housekeeperId,
+          };
+        }
+        return rm;
+      });
+      persist({ rooms: updatedRooms });
+      const housekeeper = get().staffList.find((s) => s.id === housekeeperId);
+      get().addToast(`Room assigned to ${housekeeper?.fullName || "staff"}`, "success");
+    },
+
+    updateCleaningStatus: (roomId, status, notes) => {
+      const updatedRooms = get().rooms.map((rm) => {
+        if (rm.id === roomId) {
+          const u: Partial<Room> = { housekeepingStatus: status };
+          if (notes !== undefined) {
+            u.notes = notes;
+          }
+          // If status is inspected or clean, housekeeper task is wrapped
+          return { ...rm, ...u };
+        }
+        return rm;
+      });
+      persist({ rooms: updatedRooms });
+      get().addToast(`Room cleaning updated to: ${status}`, "success");
+    },
+
+    markRoomMaintenance: (roomId, notes) => {
+      const updatedRooms = get().rooms.map((rm) => {
+        if (rm.id === roomId) {
+          return {
+            ...rm,
+            status: RoomStatus.UNDER_MAINTENANCE,
+            notes,
+          };
+        }
+        return rm;
+      });
+      persist({ rooms: updatedRooms });
+      get().addToast(`Room marked for Repair & Maintenance`, "success");
+    },
+
+    // Billing
+    calculateBill: (resId, discountPesewas = 0) => {
+      const reservation = get().reservations.find((r) => r.id === resId);
+      if (!reservation) {
+        throw new Error("Target booking details not found for calculation");
+      }
+
+      const dIn = new Date(reservation.checkInDate);
+      const dOut = new Date(reservation.checkOutDate);
+      let nights = Math.max(1, Math.round((dOut.getTime() - dIn.getTime()) / (1000 * 3600 * 24)));
+      const targetRoom = get().rooms.find((r) => r.id === reservation.roomId);
+      const ratePerNight = targetRoom?.pricePesewas || 45000;
+      const roomCharges = nights * ratePerNight;
+      const extrasCharges = reservation.extraCharges.reduce((acc, c) => acc + c.amountPesewas, 0);
+
+      const vatRate = get().propertyProfile?.vatRate || 15;
+      const totalBeforeVAT = Math.max(0, (roomCharges + extrasCharges) - discountPesewas);
+      const calculatedVat = Math.round(totalBeforeVAT * (vatRate / 100));
+      const grandTotal = totalBeforeVAT + calculatedVat;
+
+      const computedBill: Bill = {
+        id: `Bill-${resId}`,
+        reservationId: resId,
+        roomChargesPesewas: roomCharges,
+        extrasChargesPesewas: extrasCharges,
+        discountPesewas,
+        vatPesewas: calculatedVat,
+        totalPesewas: grandTotal,
+        paid: get().bills[resId]?.paid || false,
+        paymentMethod: get().bills[resId]?.paymentMethod,
+        paymentReference: get().bills[resId]?.paymentReference,
+        settledAt: get().bills[resId]?.settledAt,
+      };
+
+      const updatedBills = { ...get().bills, [resId]: computedBill };
+      persist({ bills: updatedBills });
+      return computedBill;
+    },
+
+    recordPayment: (resId, method, reference) => {
+      const currentBill = get().bills[resId];
+      if (!currentBill) return;
+
+      const updatedBills = {
+        ...get().bills,
+        [resId]: {
+          ...currentBill,
+          paid: true,
+          paymentMethod: method,
+          paymentReference: reference || `REF_${Date.now()}`,
+          settledAt: new Date().toISOString(),
+        },
+      };
+
+      persist({ bills: updatedBills });
+      get().addToast(`Bill fully paid with ${method}!`, "success");
+    },
+
+    applyDiscount: (resId, amountPesewas) => {
+      const currentBill = get().bills[resId];
+      if (!currentBill) return;
+
+      // Recalculate bill
+      const accommodation = currentBill.roomChargesPesewas;
+      const extras = currentBill.extrasChargesPesewas;
+      const vatRate = get().propertyProfile?.vatRate || 15;
+      const totalBeforeVAT = Math.max(0, (accommodation + extras) - amountPesewas);
+      const calculatedVat = Math.round(totalBeforeVAT * (vatRate / 100));
+      const grandTotal = totalBeforeVAT + calculatedVat;
+
+      const updatedBills = {
+        ...get().bills,
+        [resId]: {
+          ...currentBill,
+          discountPesewas: amountPesewas,
+          vatPesewas: calculatedVat,
+          totalPesewas: grandTotal,
+        },
+      };
+
+      persist({ bills: updatedBills });
+      get().addToast(`Applied discount of GHS ₵${(amountPesewas / 100).toFixed(2)}`, "success");
+    },
+
+    // Staff
+    addStaff: (staffData) => {
+      const id = "st-" + Math.random().toString(36).substring(2, 6);
+      const newStaff: Staff = { ...staffData, id };
+      persist({
+        staffList: [...get().staffList, newStaff],
+      });
+      get().addToast(`Staff profile registered for ${newStaff.fullName}`, "success");
+    },
+
+    editStaff: (id, updates) => {
+      const updated = get().staffList.map((s) => (s.id === id ? { ...s, ...updates } : s));
+      persist({ staffList: updated });
+      get().addToast("Staff profile updated", "success");
+    },
+
+    updatePropertyProfile: (updates) => {
+      const current = get().propertyProfile;
+      if (current) {
+        const nextProfile = { ...current, ...updates };
+        persist({ propertyProfile: nextProfile });
+        get().addToast("Hotel operations configurations updated successfully", "success");
+      }
+    },
+  };
+});

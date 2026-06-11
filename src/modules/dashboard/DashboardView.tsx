@@ -1,25 +1,8 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React from "react";
-import {
-  Bed,
-  TrendingUp,
-  UserCheck,
-  UserX,
-  Package,
-  ClipboardList,
-  PlusCircle,
-  Bell,
-  Sparkles,
-  ArrowRight,
-  UserCheck2,
-} from "lucide-react";
 import { useHotelStore } from "../../store/hotelStore";
-import { RoomStatus, ReservationStatus, HousekeepingStatus } from "../../types";
-import { Card, Badge, Button } from "../../components/ui/design";
+import { RoomStatus, HousekeepingStatus, ReservationStatus } from "../../types";
+import { Bed, Calendar, ArrowRight, ClipboardList, Info } from "lucide-react";
+import { Badge, Card } from "../../components/ui/design";
 
 interface DashboardViewProps {
   onSelectBooking: (id: string) => void;
@@ -38,429 +21,249 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const rooms = store.rooms;
   const reservations = store.reservations;
   const guests = store.guests;
-  const folios = store.folios;
-  const inventory = store.inventoryList;
+  const roomTypes = store.roomTypes;
 
-  // 1. Calculations:
-  // Rooms filters
-  const totalRoomsCount = rooms.length || 1;
-  const occupiedRooms = rooms.filter((r) => r.status === RoomStatus.OCCUPIED);
-  const occupiedCount = occupiedRooms.length;
-  const availableCount = rooms.filter((r) => r.status === RoomStatus.AVAILABLE).length;
+  // 1. Calculate operational stats
+  const totalRoomsCount = rooms.length;
+  const availableRoomsCount = rooms.filter((r) => r.status === RoomStatus.AVAILABLE).length;
+  const occupiedTonightCount = rooms.filter((r) => r.status === RoomStatus.OCCUPIED).length;
 
-  // Occupancy rate calculation
-  const occupancyPercentage = Math.round((occupiedCount / totalRoomsCount) * 100);
+  // Let's deduce relative today's date formatted as YYYY-MM-DD
+  const todayStr = "2026-06-09"; // Set to system metadata date for consistency!
 
-  // Today dates YYYY-MM-DD
-  const todayStr = new Date().toISOString().split("T")[0];
-
-  // Arrivals today: reservations with checkInDate = today and status not cancelled/no-show
   const arrivalsToday = reservations.filter(
-    (r) =>
-      r.checkInDate === todayStr &&
-      r.status !== ReservationStatus.CANCELLED &&
-      r.status !== ReservationStatus.NO_SHOW
+    (res) => res.checkInDate === todayStr && res.status === ReservationStatus.CONFIRMED
   );
 
-  // Departures today: reservations with checkOutDate = today and status checked-in or checked-out
   const departuresToday = reservations.filter(
-    (r) =>
-      r.checkOutDate === todayStr &&
-      (r.status === ReservationStatus.CHECKED_IN || r.status === ReservationStatus.CHECKED_OUT)
+    (res) => res.checkOutDate === todayStr && res.status === ReservationStatus.CHECKED_IN
   );
 
-  // Revenue calculation:
-  // Sum of payments recorded on any invoice today + manual invoices
-  const todayPaymentsSum = Object.values(folios).reduce((sum, fol) => {
-    const todayFers = fol.payments.filter((p) => p.timestamp.startsWith(todayStr));
-    const daySettle = todayFers.reduce((s, pay) => s + pay.amountPesewas, 0);
-    return sum + daySettle;
-  }, 0);
+  const dirtyRooms = rooms.filter((r) => r.housekeepingStatus === HousekeepingStatus.DIRTY);
 
-  // Housekeeping counts
-  const cleanCount = rooms.filter((r) => r.housekeepingStatus === HousekeepingStatus.CLEAN || r.housekeepingStatus === HousekeepingStatus.INSPECTED).length;
-  const dirtyCount = rooms.filter((r) => r.housekeepingStatus === HousekeepingStatus.DIRTY).length;
-  const inspectingCount = rooms.filter((r) => r.housekeepingStatus === HousekeepingStatus.INSPECTING).length;
+  // Helper to retrieve names dynamically
+  const getGuestLabel = (guestId: string) => {
+    const gst = guests.find((g) => g.id === guestId);
+    return gst ? gst.fullName : "Unknown Guest";
+  };
 
-  // Filter low stock
-  const lowStockItems = inventory.filter((item) => item.stockLevel <= item.reorderLevel);
+  const getRoomName = (roomId?: string) => {
+    const rm = rooms.find((r) => r.id === roomId);
+    return rm ? `Room ${rm.roomNumber}` : "Not Assigned";
+  };
 
-  // Recent reservations: last 4 created
-  const recentBookings = [...reservations]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 4);
+  const getRoomTypeName = (typeId: string) => {
+    return roomTypes.find((t) => t.id === typeId)?.name || "Standard";
+  };
+
+  const getRoomStatusColor = (status: RoomStatus) => {
+    const maps = {
+      [RoomStatus.AVAILABLE]: "bg-emerald-500 border-emerald-600 text-white",
+      [RoomStatus.OCCUPIED]: "bg-red-500 border-red-650 text-white",
+      [RoomStatus.RESERVED]: "bg-amber-500 border-amber-600 text-white",
+      [RoomStatus.UNDER_MAINTENANCE]: "bg-slate-500 border-slate-600 text-white",
+    };
+    return maps[status] || "bg-slate-400";
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       
-      {/* Quick top welcome alerts banner */}
-      <div className="bg-cyan-50/50 border border-cyan-100 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 sm:p-2.5 bg-brand-teal/10 rounded-lg text-brand-teal">
-            <Sparkles className="w-5 h-5 shrink-0" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-800 font-display uppercase tracking-widest leading-none">
-              StayCore Orchestrator Live
-            </h3>
-            <p className="text-xs text-slate-500 mt-1 leading-normal">
-              System running successfully with {store.currentUser?.fullName} online. Check outstanding low stock warnings.
-            </p>
-          </div>
-        </div>
-
-        {/* Quick action buttons container */}
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={onLaunchNewBooking}
-            className="flex-1 sm:flex-none px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-brand-teal text-white hover:bg-brand-teal/90 rounded-lg shadow-sm font-sans flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <PlusCircle className="w-4 h-4" /> New Booking
-          </button>
-          <button
-            onClick={onLaunchNewGuest}
-            className="flex-1 sm:flex-none px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 rounded-lg font-sans flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            Add Profile
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Stats cards board */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* 4 Primary Stat cards outlined in specifications */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         
-        {/* Rooms Occupied */}
-        <Card className="p-4 flex flex-col justify-between min-h-[110px]">
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-              Occupied Tonight
-            </span>
-            <p className="text-2xl font-black font-display text-slate-800 mt-1.5">
-              {occupiedCount}
-            </p>
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider block">Rooms Available</span>
+            <p className="text-3xl font-black text-slate-800">{availableRoomsCount}</p>
+            <span className="text-[10px] text-slate-400">out of {totalRoomsCount} registered</span>
           </div>
-          <p className="text-[9px] text-slate-500 font-mono">
-            / {totalRoomsCount} Rooms configured
-          </p>
-        </Card>
-
-        {/* Checkins Today */}
-        <Card className="p-4 flex flex-col justify-between min-h-[110px]">
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-              Check-Ins Today
-            </span>
-            <p className="text-2xl font-black font-display text-slate-800 mt-1.5">
-              {arrivalsToday.length}
-            </p>
+          <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
+            <Bed className="w-6 h-6" />
           </div>
-          <div className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <p className="text-[9px] text-emerald-600 font-bold uppercase">Arrival operations</p>
-          </div>
-        </Card>
-
-        {/* Checkouts today */}
-        <Card className="p-4 flex flex-col justify-between min-h-[110px]">
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-              Check-Outs Today
-            </span>
-            <p className="text-2xl font-black font-display text-slate-800 mt-1.5">
-              {departuresToday.length}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-            <p className="text-[9px] text-yellow-600 font-bold uppercase">Folio settlements</p>
-          </div>
-        </Card>
-
-        {/* Dynamic estimated revenue today */}
-        <Card className="p-4 flex flex-col justify-between min-h-[110px]">
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-              Cash receipts today
-            </span>
-            <p className="text-2xl font-black font-mono text-emerald-600 mt-1.5">
-              ₵{(todayPaymentsSum / 100).toFixed(2)}
-            </p>
-          </div>
-          <p className="text-[9px] text-slate-400 font-mono">
-            MOMOs & direct channels
-          </p>
-        </Card>
-
-        {/* Rooms Available */}
-        <Card className="p-4 flex flex-col justify-between min-h-[110px]">
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-              House Available
-            </span>
-            <p className="text-2xl font-black font-display text-slate-800 mt-1.5">
-              {availableCount}
-            </p>
-          </div>
-          <p className="text-[9px] text-slate-500 font-mono">
-            Ready to receive walk-ins
-          </p>
-        </Card>
-
-      </div>
-
-      {/* Main middle grid: Occupancy Gauge vs Today's Operations lists */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        
-        {/* Left column - Occupancy gauge & Housekeeping */}
-        <div className="lg:col-span-4 space-y-5">
-          
-          {/* Circular Occupancy gauge chart (Tailwind concentric circular design) */}
-          <Card className="p-6 text-center space-y-4">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-              Live House Occupancy Gauge
-            </h4>
-
-            <div className="relative w-36 h-36 mx-auto flex items-center justify-center pt-2">
-              {/* Semi concentric stroke circle ring */}
-              <svg className="w-full h-full rotate-[-90deg]">
-                <circle
-                  cx="72"
-                  cy="72"
-                  r="56"
-                  className="stroke-slate-100 fill-none"
-                  strokeWidth="10"
-                />
-                <circle
-                  cx="72"
-                  cy="72"
-                  r="56"
-                  className="stroke-brand-teal fill-none transition-all duration-500"
-                  strokeWidth="10"
-                  strokeDasharray="351.8"
-                  strokeDashoffset={351.8 - (351.8 * (occupancyPercentage || 0)) / 100}
-                  strokeLinecap="round"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col justify-center items-center">
-                <span className="text-2xl font-black font-display text-slate-800">
-                  {occupancyPercentage}%
-                </span>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                  Occupied
-                </span>
-              </div>
-            </div>
-
-            <div className="flex justify-around text-xs border-t border-slate-50 pt-3">
-              <div>
-                <p className="text-slate-400 text-[10px] font-bold uppercase">Occupied</p>
-                <span className="font-bold font-mono text-slate-700">{occupiedCount}</span>
-              </div>
-              <div className="border-r border-slate-100" />
-              <div>
-                <p className="text-slate-400 text-[10px] font-bold uppercase">Empty ready</p>
-                <span className="font-bold font-mono text-slate-700">{availableCount}</span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Housekeeping state widget */}
-          <Card className="p-4 space-y-3">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-              Room Cleanup Statuses
-            </h4>
-            
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-xs p-2 bg-emerald-50 rounded-lg text-emerald-800 font-medium">
-                <span className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Clean / Inspected</span>
-                <span className="font-bold">{cleanCount} Rooms</span>
-              </div>
-              <div className="flex justify-between items-center text-xs p-2 bg-red-50 rounded-lg text-red-800 font-medium">
-                <span className="flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" /> Dirty / Unattended</span>
-                <span className="font-bold">{dirtyCount} Rooms</span>
-              </div>
-              <div className="flex justify-between items-center text-xs p-2 bg-amber-50 rounded-lg text-amber-800 font-medium">
-                <span className="flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" /> Active Inspections</span>
-                <span className="font-bold">{inspectingCount} Rooms</span>
-              </div>
-            </div>
-          </Card>
-
         </div>
 
-        {/* Right Columns: Dynamic Arrival & Departures Board */}
-        <div className="lg:col-span-8 flex flex-col gap-5">
-          
-          <Card className="flex-1 p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <UserCheck className="w-4.5 h-4.5 text-brand-teal" />
-                <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-widest font-display">
-                  Reception Desk Scheduler (Arrivals/Departures)
-                </h4>
-              </div>
-              <span className="text-[9px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded uppercase font-mono">Date: {todayStr}</span>
-            </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider block">Occupied Tonight</span>
+            <p className="text-3xl font-black text-slate-800">{occupiedTonightCount}</p>
+            <span className="text-[10px] text-slate-400">{(totalRoomsCount ? (occupiedTonightCount / totalRoomsCount) * 100 : 0).toFixed(0)}% occupancy rate</span>
+          </div>
+          <div className="p-3 bg-red-50 rounded-lg text-red-600">
+            <Calendar className="w-6 h-6" />
+          </div>
+        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              
-              {/* Arrivals column */}
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2.5">
-                  Today's Arrivals ({arrivalsToday.length})
-                </span>
-                
-                {arrivalsToday.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-100 rounded-lg">
-                    No confirmed departures scheduled today.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {arrivalsToday.map((arr) => {
-                      const guestObj = guests.find((g) => g.id === arr.guestId);
-                      return (
-                        <div
-                          key={arr.id}
-                          onClick={() => onSelectBooking(arr.id)}
-                          className="p-3 border border-slate-100 rounded-lg hover:border-brand-teal/30 bg-slate-50/30 hover:bg-slate-50/70 transition-all cursor-pointer flex items-center justify-between"
-                        >
-                          <div className="overflow-hidden">
-                            <h5 className="text-xs font-semibold text-slate-700 truncate">{guestObj?.fullName}</h5>
-                            <span className="text-[9px] text-slate-400 font-mono mt-0.5 block">Source: {arr.source}</span>
-                          </div>
-                          <Badge variant={arr.status === "Checked-in" ? "success" : "info"} className="text-[9px]">
-                            {arr.status}
-                          </Badge>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider block">Check-ins Today</span>
+            <p className="text-3xl font-black text-slate-800">{arrivalsToday.length}</p>
+            <span className="text-[10px] text-blue-500 font-bold hover:underline cursor-pointer" onClick={() => onNavigateTab("frontdesk")}>Process Arrivals &rarr;</span>
+          </div>
+          <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+            <ArrowRight className="w-6 h-6" />
+          </div>
+        </div>
 
-              {/* Departures column */}
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2.5">
-                  Today's Departures ({departuresToday.length})
-                </span>
-
-                {departuresToday.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-100 rounded-lg">
-                    No guests scheduled to check out today.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {departuresToday.map((dep) => {
-                      const guestObj = guests.find((g) => g.id === dep.guestId);
-                      const folio = folios[dep.id];
-                      const owes = folio ? folio.charges.reduce((s, c) => s + c.amountPesewas, 0) - folio.payments.reduce((s, p) => s + p.amountPesewas, 0) : 0;
-
-                      return (
-                        <div
-                          key={dep.id}
-                          onClick={() => onSelectBooking(dep.id)}
-                          className="p-3 border border-slate-100 rounded-lg hover:border-brand-teal/30 bg-slate-50/30 hover:bg-slate-50/70 transition-all cursor-pointer flex items-center justify-between"
-                        >
-                          <div className="overflow-hidden">
-                            <h5 className="text-xs font-semibold text-slate-700 truncate">{guestObj?.fullName}</h5>
-                            {owes > 0 && (
-                              <span className="text-[9px] text-red-600 font-bold block mt-0.5">₵{(owes / 100).toFixed(2)} Bal Due</span>
-                            )}
-                          </div>
-                          <Badge variant={dep.status === "Checked-out" ? "neutral" : "warning"} className="text-[9px]">
-                            {dep.status}
-                          </Badge>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-            </div>
-          </Card>
-
-          {/* Low Stock supplies inventory alert box */}
-          {lowStockItems.length > 0 && (
-            <Card className="p-4 border-l-4 border-l-red-500 bg-red-50/40 flex items-start gap-3">
-              <Package className="w-5 h-5 text-red-500 shrink-0 mt-0.5 animate-bounce" />
-              <div className="flex-1">
-                <span className="text-[10px] font-bold text-red-800 uppercase tracking-widest">
-                  Low Supplies Inventory Warnings
-                </span>
-                <p className="text-xs text-red-700 mt-1">
-                  The stock levels of {lowStockItems.slice(0, 2).map(i => `[${i.name}]`).join(" and ")} {lowStockItems.length > 2 && "others"} have fallen beneath the minimum reorder levels. Allocate stocks via supplies card.
-                </p>
-                <button
-                  onClick={() => onNavigateTab("inventory")}
-                  className="text-[10px] font-mono font-bold text-red-900 mt-2 hover:underline flex items-center gap-1 uppercase cursor-pointer"
-                >
-                  Inspect catalog ledger <ArrowRight className="w-3 h-3" />
-                </button>
-              </div>
-            </Card>
-          )}
-
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider block">Check-outs Today</span>
+            <p className="text-3xl font-black text-slate-800">{departuresToday.length}</p>
+            <span className="text-[10px] text-blue-500 font-bold hover:underline cursor-pointer" onClick={() => onNavigateTab("frontdesk")}>Process Departures &rarr;</span>
+          </div>
+          <div className="p-3 bg-amber-50 rounded-lg text-amber-600">
+            <ArrowRight className="w-6 h-6 rotate-180" />
+          </div>
         </div>
 
       </div>
 
-      {/* Bottom element - list last bookings */}
-      <Card className="p-5 space-y-3.5">
-        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-          Recent Reservations Registry
-        </h4>
-        
-        <div className="w-full overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-slate-100 font-bold text-slate-500 uppercase tracking-wider text-[10px] pb-2">
-                <th className="py-2.5">Reference</th>
-                <th>Guest</th>
-                <th>Check In</th>
-                <th>Check Out</th>
-                <th>Status</th>
-                <th>Deposit</th>
-                <th className="text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentBookings.map((b) => {
-                const guestObj = guests.find((g) => g.id === b.guestId);
-                return (
-                  <tr key={b.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="py-3 font-mono font-semibold text-slate-800">{b.id}</td>
-                    <td className="font-medium text-slate-700">{guestObj?.fullName}</td>
-                    <td className="font-mono">{new Date(b.checkInDate).toLocaleDateString("en-GB")}</td>
-                    <td className="font-mono">{new Date(b.checkOutDate).toLocaleDateString("en-GB")}</td>
-                    <td>
-                      <Badge
-                        variant={
-                          b.status === "Checked-in"
-                            ? "success"
-                            : b.status === "Confirmed"
-                            ? "info"
-                            : b.status === "Cancelled"
-                            ? "danger"
-                            : "neutral"
-                        }
-                      >
-                        {b.status}
-                      </Badge>
-                    </td>
-                    <td className="font-mono font-semibold">₵{(b.depositAmountPesewas / 100).toFixed(2)}</td>
-                    <td className="text-right">
-                      <Button variant="outline" className="py-1 px-2.5 text-[10px]" onClick={() => onSelectBooking(b.id)}>
-                        Configure stay
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {/* Lists Segment */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* 1. Today's Arrivals */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col h-[340px]">
+          <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Today's Expected Arrivals</h3>
+            <span className="bg-blue-100 text-blue-800 font-bold text-[10px] px-2 py-0.5 rounded-full">{arrivalsToday.length}</span>
+          </div>
+          <div className="p-4 overflow-y-auto flex-1 divide-y divide-slate-100">
+            {arrivalsToday.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center p-4 text-center">
+                <Info className="w-8 h-8 text-slate-350 mb-2" />
+                <p className="text-xs text-slate-400 font-semibold">No more expected arrivals today</p>
+              </div>
+            ) : (
+              arrivalsToday.map((res) => (
+                <div key={res.id} className="py-3 flex items-center justify-between text-xs first:pt-0 hover:bg-slate-50 transition-colors">
+                  <div>
+                    <p className="font-bold text-slate-800">{getGuestLabel(res.guestId)}</p>
+                    <p className="text-[10px] text-slate-500">{getRoomName(res.roomId)} • {res.id}</p>
+                  </div>
+                  <button
+                    onClick={() => onNavigateTab("frontdesk")}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-[10px] uppercase shadow-sm cursor-pointer"
+                  >
+                    Check In
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </Card>
+
+        {/* 2. Today's Departures */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col h-[340px]">
+          <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Today's Expected Departures</h3>
+            <span className="bg-amber-100 text-amber-800 font-bold text-[10px] px-2 py-0.5 rounded-full">{departuresToday.length}</span>
+          </div>
+          <div className="p-4 overflow-y-auto flex-1 divide-y divide-slate-100">
+            {departuresToday.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center p-4 text-center">
+                <Info className="w-8 h-8 text-slate-350 mb-2" />
+                <p className="text-xs text-slate-400 font-semibold">No scheduled departures remaining today</p>
+              </div>
+            ) : (
+              departuresToday.map((res) => (
+                <div key={res.id} className="py-3 flex items-center justify-between text-xs first:pt-0 hover:bg-slate-50 transition-colors">
+                  <div>
+                    <p className="font-bold text-slate-800">{getGuestLabel(res.guestId)}</p>
+                    <p className="text-[10px] text-slate-500">{getRoomName(res.roomId)} • {res.id}</p>
+                  </div>
+                  <button
+                    onClick={() => onNavigateTab("frontdesk")}
+                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded font-bold text-[10px] uppercase shadow-sm cursor-pointer"
+                  >
+                    Check Out
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* 3. Housekeeping Dirty Alerts */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col h-[340px]">
+          <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Rooms Needing Cleaning</h3>
+            <span className="bg-red-100 text-red-800 font-bold text-[10px] px-2 py-0.5 rounded-full">{dirtyRooms.length}</span>
+          </div>
+          <div className="p-4 overflow-y-auto flex-1 divide-y divide-slate-100">
+            {dirtyRooms.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center p-4 text-center">
+                <Info className="w-8 h-8 text-emerald-300 mb-2" />
+                <p className="text-xs text-emerald-600 font-bold">All hotel rooms are clean and ready!</p>
+              </div>
+            ) : (
+              dirtyRooms.map((rm) => (
+                <div key={rm.id} className="py-3 flex items-center justify-between text-xs first:pt-0">
+                  <div>
+                    <p className="font-bold text-slate-800">Room #{rm.roomNumber}</p>
+                    <p className="text-[10px] text-slate-500">{getRoomTypeName(rm.roomTypeId)} • {rm.floor || "Floor 1"}</p>
+                  </div>
+                  <Badge variant="danger">DIRTY</Badge>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      {/* Live Hotel Room Map (Bento Layout Grid Option) */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+        <div>
+          <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Room Occupancy Map</h3>
+          <p className="text-[10px] text-slate-400">Visual overview of rooms. Green = Available, Red = Occupied, Amber = Reserved, Gray = Maintenance.</p>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3.5 pt-1">
+          {rooms.map((rm) => {
+            const isAssigned = rm.assignedHousekeeperId;
+            return (
+              <div
+                key={rm.id}
+                className={`border rounded-xl p-3 select-none text-center relative overflow-hidden transition-all duration-200 flex flex-col justify-between h-[90px] ${
+                  rm.status === RoomStatus.AVAILABLE
+                    ? "bg-emerald-50/50 border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+                    : rm.status === RoomStatus.OCCUPIED
+                    ? "bg-red-50/50 border-red-200 text-red-800 hover:bg-red-50"
+                    : rm.status === RoomStatus.RESERVED
+                    ? "bg-amber-50/50 border-amber-200 text-amber-800 hover:bg-amber-50"
+                    : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between leading-none mb-1">
+                    <span className="font-black text-sm">#{rm.roomNumber}</span>
+                    <span className={`w-2 h-2 rounded-full ${
+                      rm.status === RoomStatus.AVAILABLE ? "bg-emerald-500" :
+                      rm.status === RoomStatus.OCCUPIED ? "bg-red-500" :
+                      rm.status === RoomStatus.RESERVED ? "bg-amber-500" : "bg-slate-400"
+                    }`} />
+                  </div>
+                  <span className="text-[9px] block text-slate-500 truncate uppercase tracking-tight">
+                    {getRoomTypeName(rm.roomTypeId)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] border-t border-slate-100 pt-1.5 mt-2">
+                  <span className="font-bold">GHS ₵{Math.round(rm.pricePesewas / 100)}</span>
+                  <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
+                    rm.housekeepingStatus === HousekeepingStatus.CLEAN ? "bg-emerald-100 text-emerald-800" :
+                    rm.housekeepingStatus === HousekeepingStatus.DIRTY ? "bg-red-100 text-red-800" :
+                    rm.housekeepingStatus === HousekeepingStatus.IN_PROGRESS ? "bg-blue-100 text-blue-800" :
+                    "bg-slate-100 text-slate-800"
+                  }`}>
+                    {rm.housekeepingStatus}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
     </div>
   );

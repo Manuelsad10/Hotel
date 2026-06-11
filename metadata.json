@@ -1,6 +1,6 @@
 {
-  "name": "SUCCESS ABOVE DREAMS",
+  "name": "Success Above Dreams (SAD) PMS",
   "description": "Full Hotel Management System targeting Guesthouses, Mid-size, and Large Hotels with role-based auth, dynamic property modes, interactive reservation timeline, guest folios, checklists, and reports.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -1,411 +1,299 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from "react";
-import { Building, ShieldCheck, UserPlus, Sparkles, AlertOctagon, HelpCircle } from "lucide-react";
-import { PropertyMode } from "../../types";
 import { useHotelStore } from "../../store/hotelStore";
-import { Button, Input } from "../../components/ui/design";
+import { Building, Lock, User, FileText, Percent, MapPin, Phone } from "lucide-react";
+import defaultLogo from "../../assets/images/sad_logo_1781088567366.png";
 
 export const SetupWizard: React.FC = () => {
   const store = useHotelStore();
 
-  const [step, setStep] = useState<number>(1);
-
-  // Step 1: Property Info
-  const [name, setName] = useState("Success Above Dreams Hotel");
-  const [address, setAddress] = useState("Airport Residential Area, Accra - Ghana");
-  const [phone, setPhone] = useState("+233 24 555 1209");
-  const [email, setEmail] = useState("info@successabovedreams.com");
-  const [gtaLicense, setGtaLicense] = useState("GTA-ACC-2026-8293");
-  const [approxRooms, setApproxRooms] = useState<number>(18);
+  // Single Form States
+  const [hotelName, setHotelName] = useState("Accra Executive Residence");
+  const [logoUrl, setLogoUrl] = useState(defaultLogo);
+  const [phoneNumber, setPhoneNumber] = useState("+233 24 000 1122");
+  const [address, setAddress] = useState("Airport Residential, Ghandi St, Accra");
   const [checkInTime, setCheckInTime] = useState("14:00");
   const [checkOutTime, setCheckOutTime] = useState("12:00");
-  const [currency, setCurrency] = useState("GHS ₵");
-  const [taxEnabled, setTaxEnabled] = useState(true);
-  const [taxRate, setTaxRate] = useState<number>(15);
+  const [vatRate, setVatRate] = useState(15);
+  const [adminFullName, setAdminFullName] = useState("Emmanuel Admin");
+  const [adminPassword, setAdminPassword] = useState("admin123");
 
-  // Step 2: Mode Selection
-  const [selectedMode, setSelectedMode] = useState<PropertyMode>(PropertyMode.MIDSIZE_HOTEL);
+  const [useSampleData, setUseSampleData] = useState(true);
 
-  // Step 3: Admin Account
-  const [fullName, setFullName] = useState("Emmanuel Drah");
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("");
-  const [confirmPsw, setConfirmPsw] = useState("");
-
-  const handleNextStep = () => {
-    if (step === 3) {
-      if (password !== confirmPsw) {
-        store.addToast("Passwords do not match", "error");
-        return;
-      }
-      if (password.length < 4) {
-        store.addToast("Password must be at least 4 characters", "error");
-        return;
-      }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hotelName || !phoneNumber || !address || !adminFullName || !adminPassword) {
+      store.addToast("Please fill in all required setup information.", "error");
+      return;
     }
-    setStep((prev) => prev + 1);
-  };
-
-  const handlePrevStep = () => {
-    setStep((prev) => Math.max(1, prev - 1));
-  };
-
-  const handleCompleteSetup = () => {
-    // Generate a default base64 decorative logo helper
-    const dummyLogoSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%230f4c5c"/><text x="50" y="55" font-family="Arial" font-size="24" fill="white" font-weight="bold" text-anchor="middle">SAD</text></svg>`;
 
     store.initializeSetup(
       {
-        name,
-        logo: dummyLogoSvg,
+        name: hotelName,
+        logo: logoUrl || "",
+        phone: phoneNumber,
         address,
-        phone,
-        email,
-        gtaLicense,
-        approxRooms,
         checkInTime,
         checkOutTime,
-        currency,
-        taxEnabled,
-        taxRate,
-        cityLevyEnabled: true,
-        cityLevyRate: 1,
-        mode: selectedMode,
+        vatRate: Number(vatRate),
+        setupComplete: true,
       },
       {
-        fullName,
-        username,
-        psw: password,
-      }
+        fullName: adminFullName,
+        username: "admin",
+        psw: adminPassword,
+      },
+      useSampleData
     );
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-3xl bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row">
+    <div className="min-h-screen bg-neutral-950 flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 font-sans relative overflow-hidden bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(175,132,59,0.18),rgba(255,255,255,0))]">
+      <div className="w-full max-w-2xl bg-[#121214] border border-gold-500/20 rounded-2xl shadow-2xl p-8 space-y-6 text-white animate-in fade-in zoom-in-95 duration-300 relative before:absolute before:inset-0 before:rounded-2xl before:border-t before:border-gold-300/10 before:pointer-events-none">
         
-        {/* Sidebar Banner Area */}
-        <div className="w-full md:w-72 bg-brand-teal p-8 text-white flex flex-col justify-between">
-          <div>
-            <span className="text-[10px] font-black uppercase bg-brand-cyan/20 text-cyan-200 border border-brand-cyan/30 px-2 py-0.5 rounded tracking-widest leading-none font-mono">
-              SYSTEM INITIALIZER
-            </span>
-            <h1 className="text-xl font-bold font-display mt-3 leading-tight uppercase tracking-wider text-cyan-200">
-              SUCCESS ABOVE DREAMS
-            </h1>
-            <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-              Premium Property Orchestration Console for Independent Hostels, Guesthouses, and Large-Scale Resorts.
-            </p>
-          </div>
-
-          {/* Staggered progress steps tracker */}
-          <div className="space-y-4 my-8 relative border-l border-white/20 pl-4 text-xs font-semibold">
-            <div className={`flex items-center gap-2 ${step === 1 ? "text-cyan-200" : "text-white/40"}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${step >= 1 ? "bg-cyan-300" : "bg-white/20"}`} />
-              <span>1. Property Profile</span>
-            </div>
-            <div className={`flex items-center gap-2 ${step === 2 ? "text-cyan-200" : "text-white/40"}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${step >= 2 ? "bg-cyan-300" : "bg-white/20"}`} />
-              <span>2. Operational Mode</span>
-            </div>
-            <div className={`flex items-center gap-2 ${step === 3 ? "text-cyan-200" : "text-white/40"}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${step >= 3 ? "bg-cyan-300" : "bg-white/20"}`} />
-              <span>3. Administrator Account</span>
-            </div>
-            <div className={`flex items-center gap-2 ${step === 4 ? "text-cyan-200" : "text-white/40"}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${step >= 4 ? "bg-cyan-300" : "bg-white/20"}`} />
-              <span>4. Final Verification</span>
-            </div>
-          </div>
-
-          {/* Credit and Port information */}
-          <div className="text-[9px] text-slate-400 font-mono mt-auto">
-            PORT: 8769 | SECURED OFFLINE
-          </div>
+        {/* Branding Title */}
+        <div className="text-center">
+          <img
+            src={defaultLogo}
+            alt="Success Above Dreams (SAD) Logo"
+            className="mx-auto h-16 w-16 rounded-2xl border border-gold-500/25 object-cover bg-white shadow-xl mb-3"
+            referrerPolicy="no-referrer"
+          />
+          <h2 className="mt-4 text-2xl font-bold font-display tracking-tight text-white uppercase">
+            Success Above Dreams (SAD) PMS
+          </h2>
+          <p className="mt-2 text-xs text-slate-450 text-slate-400">
+            Configure luxury hotel operations and register your administrator credential profile below.
+          </p>
         </div>
 
-        {/* Dynamic Setup Forms Panel */}
-        <div className="flex-1 p-8 flex flex-col justify-between min-h-[480px]">
-          <div>
-            {step === 1 && (
-              <div className="space-y-4 animate-in fade-in duration-200">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-2">
-                  <Building className="w-5 h-5 text-brand-teal" />
-                  <h2 className="text-base font-bold text-slate-800 uppercase tracking-widest font-display">
-                    Establish Property Profile
-                  </h2>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3.5">
-                  <Input label="Property Name" value={name} onChange={(e) => setName(e.target.value)} required />
-                  <Input label="GTA Tourist License" value={gtaLicense} onChange={(e) => setGtaLicense(e.target.value)} />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3.5">
-                  <Input label="Property Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                  <Input label="Property Phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                </div>
-
-                <Input label="Physical Postal Address" value={address} onChange={(e) => setAddress(e.target.value)} />
-
-                <div className="grid grid-cols-3 gap-3">
-                  <Input label="Default Check-In" type="time" value={checkInTime} onChange={(e) => setCheckInTime(e.target.value)} />
-                  <Input label="Default Check-Out" type="time" value={checkOutTime} onChange={(e) => setCheckOutTime(e.target.value)} />
-                  <Input label="Approx Room Count" type="number" value={approxRooms} onChange={(e) => setApproxRooms(parseInt(e.target.value) || 0)} />
-                </div>
-
-                {/* Country and taxation options */}
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-slate-600 uppercase">National Currency</label>
-                    <select
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value)}
-                      className="px-3 py-2 text-sm text-slate-800 bg-white border border-slate-200 rounded-lg outline-none"
-                    >
-                      <option value="GHS ₵">Ghana Pesewas / Cedis (GHS ₵)</option>
-                      <option value="USD $">United States Dollar (USD $)</option>
-                    </select>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5 justify-center mt-4">
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={taxEnabled}
-                        onChange={(e) => setTaxEnabled(e.target.checked)}
-                        className="w-4 h-4 text-brand-teal accent-brand-teal cursor-pointer"
-                      />
-                      <span>In-Hotel VAT Tax (15% Ghana VAT)</span>
-                    </label>
-                  </div>
-                </div>
+        {/* Setup Configuration Form */}
+        <form onSubmit={handleSubmit} className="space-y-6 text-xs">
+          
+          <div className="border-b border-[#222] pb-5">
+            <h3 className="text-sm font-bold text-gold-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Building className="w-4 h-4 text-gold-500" /> 1. Hotel Information
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-450 text-slate-400 uppercase tracking-widest">
+                  Hotel Name <span className="text-red-500">*</span>
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={hotelName}
+                  onChange={(e) => setHotelName(e.target.value)}
+                  className="px-3.5 py-2.5 bg-[#18181b] border border-neutral-800 text-white focus:border-gold-500 rounded-xl outline-none focus:ring-1 focus:ring-gold-500 transition-colors text-sm"
+                  placeholder="e.g. Labadi Lodge"
+                />
               </div>
-            )}
 
-            {step === 2 && (
-              <div className="space-y-4 animate-in fade-in duration-200">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-2">
-                  <Sparkles className="w-5 h-5 text-brand-teal" />
-                  <h2 className="text-base font-bold text-slate-800 uppercase tracking-widest font-display">
-                    Select Operational Mode
-                  </h2>
-                </div>
-
-                <p className="text-xs text-slate-500 leading-normal">
-                  Our StayCore system adapts menus, inventories, calendars, buildings, spa booking metrics, and analytics to match your property type. Choose matching mode:
-                </p>
-
-                {/* Grid of Three Cards */}
-                <div className="grid grid-cols-3 gap-3.5 pt-1">
+              <div className="flex flex-col gap-1 md:col-span-2">
+                <span className="text-[10px] font-bold text-slate-450 text-slate-400 uppercase tracking-widest block mb-1">
+                  Company Identity Logo
+                </span>
+                <div className="flex flex-col sm:flex-row gap-4 p-4 bg-[#18181b] border border-neutral-800 rounded-xl items-center">
+                  <div className="relative group w-20 h-20 rounded-xl overflow-hidden border border-neutral-800 shadow-xs bg-[#121214] shrink-0 flex items-center justify-center">
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt="Company Logo Preview"
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="text-[10px] uppercase font-black text-slate-500">No Logo</span>
+                    )}
+                  </div>
                   
-                  {/* Mode Guesthouse */}
-                  <div
-                    onClick={() => setSelectedMode(PropertyMode.GUESTHOUSE)}
-                    className={`border p-4 rounded-xl cursor-pointer transition-all flex flex-col justify-between min-h-[190px] ${
-                      selectedMode === PropertyMode.GUESTHOUSE
-                        ? "border-brand-teal bg-neutral-50 shadow-md scale-[1.01]"
-                        : "border-slate-150 hover:bg-zinc-50"
-                    }`}
-                  >
-                    <div>
-                      <span className="text-[9px] bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.5 rounded uppercase">
-                        B&B/Inn
-                      </span>
-                      <h4 className="text-xs font-black uppercase text-slate-800 font-display mt-2">
-                        Guesthouse Mode
-                      </h4>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-normal">
-                        Simplistic, light layout with minimal services.
-                      </p>
+                  <div className="flex-1 space-y-2 w-full">
+                    <div className="flex items-center gap-2">
+                      <label className="px-3.5 py-1.5 bg-gold-500 hover:bg-gold-600 text-neutral-950 rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer select-none transition-colors">
+                        Upload custom logo...
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 2 * 1024 * 1024) {
+                                store.addToast("Logo size exceeds 2MB limit.", "error");
+                                return;
+                              }
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                if (event.target?.result) {
+                                  setLogoUrl(event.target.result as string);
+                                  store.addToast("Company logo updated successfully!", "success");
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                      
+                      {logoUrl !== defaultLogo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLogoUrl(defaultLogo);
+                            store.addToast("Reset default Success Above Dreams logo.", "success");
+                          }}
+                          className="px-3 py-1.5 border border-neutral-800 hover:bg-white/5 text-slate-350 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
+                        >
+                          Set Default SAD Logo
+                        </button>
+                      )}
                     </div>
-                    <ul className="text-[9px] text-slate-500 font-bold space-y-1 list-disc pl-3.5 mt-3 leading-tight uppercase">
-                      <li>Bed/Beds only</li>
-                      <li>Basic Housekeeping</li>
-                      <li>Fast Billings</li>
-                    </ul>
-                  </div>
-
-                  {/* Mode Midsize */}
-                  <div
-                    onClick={() => setSelectedMode(PropertyMode.MIDSIZE_HOTEL)}
-                    className={`border p-4 rounded-xl cursor-pointer transition-all flex flex-col justify-between min-h-[190px] ${
-                      selectedMode === PropertyMode.MIDSIZE_HOTEL
-                        ? "border-brand-teal bg-neutral-50 shadow-md scale-[1.01]"
-                        : "border-slate-150 hover:bg-zinc-50"
-                    }`}
-                  >
-                    <div>
-                      <span className="text-[9px] bg-cyan-50 text-brand-teal font-bold px-1.5 py-0.5 rounded uppercase">
-                        Hotel
-                      </span>
-                      <h4 className="text-xs font-black uppercase text-slate-800 font-display mt-2">
-                        Mid-Size Hotel
-                      </h4>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-normal">
-                        Multiple room divisions, bars, events, and channel managers.
-                      </p>
-                    </div>
-                    <ul className="text-[9px] text-slate-500 font-bold space-y-1 list-disc pl-3.5 mt-3 leading-tight uppercase">
-                      <li>Restaurant & Bar</li>
-                      <li>Conference Booking</li>
-                      <li>OTA Channel logs</li>
-                    </ul>
-                  </div>
-
-                  {/* Mode Resort */}
-                  <div
-                    onClick={() => setSelectedMode(PropertyMode.LARGE_HOTEL)}
-                    className={`border p-4 rounded-xl cursor-pointer transition-all flex flex-col justify-between min-h-[190px] ${
-                      selectedMode === PropertyMode.LARGE_HOTEL
-                        ? "border-brand-teal bg-neutral-50 shadow-md scale-[1.01]"
-                        : "border-slate-150 hover:bg-zinc-50"
-                    }`}
-                  >
-                    <div>
-                      <span className="text-[9px] bg-rose-50 text-rose-700 font-bold px-1.5 py-0.5 rounded uppercase">
-                        Fully Loaded
-                      </span>
-                      <h4 className="text-xs font-black uppercase text-slate-800 font-display mt-2">
-                        Resort Complex
-                      </h4>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-normal">
-                        Comprehensive layout across multiple building blocks, pool, spa, and wellness center.
-                      </p>
-                    </div>
-                    <ul className="text-[9px] text-slate-500 font-bold space-y-1 list-disc pl-3.5 mt-3 leading-tight uppercase">
-                      <li>Multiple Buildings</li>
-                      <li>Spa & Massage Settle</li>
-                      <li>Advanced Logistics</li>
-                    </ul>
-                  </div>
-
-                </div>
-
-                {/* Important warning constraints block */}
-                <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex gap-2 pt-3.5">
-                  <AlertOctagon className="w-5 h-5 text-red-600 shrink-0" />
-                  <div>
-                    <span className="text-[10px] font-bold text-red-800 uppercase tracking-widest leading-none block mb-0.5">
-                      Critical System Notice
-                    </span>
-                    <p className="text-[10px] text-red-600 leading-normal">
-                      Once selected, features exclusive to chosen mode are established deep within the database schema. Switching requires a full factories reset by a system Super Admin.
+                    <p className="text-[10px] text-slate-400 font-medium">
+                      Select or drop a PNG/JPEG file (Max 2MB). Our system supports automatic scaling for client receipts.
                     </p>
                   </div>
                 </div>
               </div>
-            )}
 
-            {step === 3 && (
-              <div className="space-y-4 animate-in fade-in duration-200">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-2">
-                  <UserPlus className="w-5 h-5 text-brand-teal" />
-                  <h2 className="text-base font-bold text-slate-800 uppercase tracking-widest font-display">
-                    Setup Admin Account
-                  </h2>
-                </div>
-
-                <p className="text-xs text-slate-500 leading-normal">
-                  Configure the credentials of the core Super Admin profile who can reset database variables and edit operational structures.
-                </p>
-
-                <div className="space-y-3 pt-2">
-                  <Input label="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-                  <Input label="System Username" value={username} onChange={(e) => setUsername(e.target.value)} required />
-                  
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <Input label="Secure Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                    <Input label="Confirm Password" type="password" value={confirmPsw} onChange={(e) => setConfirmPsw(e.target.value)} required />
-                  </div>
-                </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-450 text-slate-400 uppercase tracking-widest">
+                  Hotel Phone Number <span className="text-red-500">*</span>
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  className="px-3.5 py-2.5 bg-[#18181b] border border-neutral-800 text-white focus:border-gold-500 rounded-xl outline-none focus:ring-1 focus:ring-gold-500 transition-colors text-sm"
+                  placeholder="+233 24 123 4567"
+                />
               </div>
-            )}
 
-            {step === 4 && (
-              <div className="space-y-4 animate-in fade-in duration-200">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-2">
-                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                  <h2 className="text-base font-bold text-slate-800 uppercase tracking-widest font-display">
-                    Summary Review & Consent
-                  </h2>
-                </div>
-
-                <p className="text-xs text-slate-500 leading-normal">
-                  Double check the specified configuration variables. Clicking the initialization button below will boot the hotel engine.
-                </p>
-
-                <div className="border border-slate-150 rounded-xl p-4 space-y-2.5 text-xs text-slate-700 bg-zinc-50/50">
-                  <div className="flex justify-between pb-1.5 border-b border-slate-150 font-bold">
-                    <span>Variable Definition</span>
-                    <span>Configuration Value</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Hotel Name:</span>
-                    <span className="font-semibold text-slate-800">{name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Tourism Lic:</span>
-                    <span className="font-mono">{gtaLicense || "Not Registered"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Postal Address:</span>
-                    <span className="font-semibold text-slate-800 truncate">{address}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Currency Setup:</span>
-                    <span className="font-bold text-brand-teal">{currency}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Selected Mode:</span>
-                    <span className="font-bold uppercase text-brand-cyan">
-                      {selectedMode === PropertyMode.GUESTHOUSE
-                        ? "Guesthouse B&B Mode"
-                        : selectedMode === PropertyMode.MIDSIZE_HOTEL
-                        ? "Mid-Size Hotel Mode"
-                        : "Resort Complex Mode"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Main Account:</span>
-                    <span className="font-mono">{fullName} ({username})</span>
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-slate-400 leading-normal leading-relaxed text-center italic mt-2">
-                  By clicking the button below, you represent that the provided Ghana Tourism registration numbers of the establishment are correct. StayCore is ready.
-                </p>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-450 text-slate-400 uppercase tracking-widest">
+                  Hotel Address <span className="text-red-500">*</span>
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="px-3.5 py-2.5 bg-[#18181b] border border-neutral-800 text-white focus:border-gold-500 rounded-xl outline-none focus:ring-1 focus:ring-gold-500 transition-colors text-sm"
+                  placeholder="Airport West, Accra"
+                />
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Nav control buttons footer */}
-          <div className="flex items-center justify-between border-t border-slate-100 pt-5 mt-6">
-            {step > 1 ? (
-              <Button variant="outline" onClick={handlePrevStep}>
-                Back
-              </Button>
-            ) : (
-              <div />
-            )}
+          <div className="border-b border-[#222] pb-5">
+            <h3 className="text-sm font-bold text-gold-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Percent className="w-4 h-4 text-gold-500" /> 2. Checkout & Taxes Configuration (Accra, Ghana)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-450 text-slate-400 uppercase tracking-widest">
+                  Check-In Time
+                </span>
+                <input
+                  type="time"
+                  value={checkInTime}
+                  onChange={(e) => setCheckInTime(e.target.value)}
+                  className="px-3.5 py-2.5 bg-[#18181b] border border-neutral-800 text-white focus:border-gold-500 rounded-xl outline-none focus:ring-1 focus:ring-gold-500 transition-colors text-sm"
+                />
+              </div>
 
-            {step < 4 ? (
-              <Button variant="primary" onClick={handleNextStep}>
-                Continue
-              </Button>
-            ) : (
-              <Button variant="success" onClick={handleCompleteSetup} className="px-6">
-                Launch StayCore Hotel System
-              </Button>
-            )}
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-450 text-slate-400 uppercase tracking-widest">
+                  Check-Out Time
+                </span>
+                <input
+                  type="time"
+                  value={checkOutTime}
+                  onChange={(e) => setCheckOutTime(e.target.value)}
+                  className="px-3.5 py-2.5 bg-[#18181b] border border-neutral-800 text-white focus:border-gold-500 rounded-xl outline-none focus:ring-1 focus:ring-gold-500 transition-colors text-sm"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-450 text-slate-400 uppercase tracking-widest">
+                  VAT Rate (%)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  required
+                  value={vatRate}
+                  onChange={(e) => setVatRate(Number(e.target.value))}
+                  className="px-3.5 py-2.5 bg-[#18181b] border border-neutral-800 text-white focus:border-gold-500 rounded-xl outline-none focus:ring-1 focus:ring-gold-500 transition-colors text-sm font-bold"
+                  placeholder="15"
+                />
+              </div>
+            </div>
           </div>
 
-        </div>
+          <div>
+            <h3 className="text-sm font-bold text-gold-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-gold-500" /> 3. Admin Account Setup
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-450 text-slate-400 uppercase tracking-widest">
+                  Full Name <span className="text-red-500">*</span>
+                </span>
+                <div className="relative">
+                  <User className="absolute left-3 top-3 w-4 h-4 text-gold-500/50" />
+                  <input
+                    type="text"
+                    required
+                    value={adminFullName}
+                    onChange={(e) => setAdminFullName(e.target.value)}
+                    className="pl-9 pr-3.5 py-2.5 w-full bg-[#18181b] border border-neutral-800 text-white focus:border-gold-500 rounded-xl outline-none focus:ring-1 focus:ring-gold-500 transition-colors text-sm"
+                    placeholder="Adwoa Mansah"
+                  />
+                </div>
+              </div>
 
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-450 text-slate-400 uppercase tracking-widest">
+                  Password <span className="text-red-500">*</span>
+                </span>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 w-4 h-4 text-gold-500/50" />
+                  <input
+                    type="password"
+                    required
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="pl-9 pr-3.5 py-2.5 w-full bg-[#18181b] border border-neutral-800 text-white focus:border-gold-500 rounded-xl outline-none focus:ring-1 focus:ring-gold-500 transition-colors text-sm font-mono tracking-widest"
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Seed Data Prompt */}
+          <div className="p-4 bg-[#18181b] rounded-xl border border-neutral-800 flex items-center justify-between select-none">
+            <div>
+              <p className="font-bold text-slate-200">Load Setup Template Data?</p>
+              <p className="text-[10px] text-slate-400">Pre-seed rooms, standard rates, staff accounts, and dummy check-ins for demo purposes.</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={useSampleData}
+              onChange={(e) => setUseSampleData(e.target.checked)}
+              className="w-5 h-5 accent-gold-500 rounded cursor-pointer shrink-0"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-3.5 bg-gold-500 hover:bg-gold-600 text-neutral-950 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_20px_rgba(175,132,59,0.15)] active:scale-98 cursor-pointer transition-all flex items-center justify-center gap-1"
+          >
+            Launch Success Above Dreams (SAD) PMS &rarr;
+          </button>
+
+        </form>
       </div>
     </div>
   );

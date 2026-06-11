@@ -15,7 +15,7 @@ export const Card: React.FC<{
 }> = ({ children, className = "", id }) => (
   <div
     id={id}
-    className={`bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden ${className}`}
+    className={`bg-white rounded-xl border border-neutral-200/80 shadow-md hover:shadow-lg hover:border-gold-500/30 transition-all duration-300 overflow-hidden ${className}`}
   >
     {children}
   </div>
@@ -39,14 +39,14 @@ export const Button: React.FC<{
   type = "button",
   id,
 }) => {
-  const base = "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
+  const base = "px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all duration-300 focus:outline-none flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
   const styles = {
-    primary: "bg-brand-teal text-white hover:bg-brand-teal/90 active:scale-98 shadow-sm",
-    secondary: "bg-slate-100 text-slate-800 hover:bg-slate-200 active:scale-98",
-    danger: "bg-red-600 text-white hover:bg-red-700 active:scale-98",
-    success: "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-98",
-    warning: "bg-amber-500 text-white hover:bg-amber-600 active:scale-98",
-    outline: "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+    primary: "bg-neutral-950 text-white hover:bg-gold-500 hover:text-neutral-950 border border-neutral-900 hover:border-[#614305] shadow-lg active:scale-98 transition-all duration-300",
+    secondary: "bg-white text-neutral-800 hover:bg-neutral-50 border border-neutral-300 active:scale-98 transition-all duration-300",
+    danger: "bg-red-600 text-white hover:bg-red-700 active:scale-98 transition-all duration-300",
+    success: "bg-gold-500 text-neutral-950 hover:bg-gold-600 hover:text-white border border-gold-600 active:scale-98 transition-all duration-300",
+    warning: "bg-neutral-900 border border-gold-400 text-gold-400 hover:bg-gold-500 hover:text-neutral-950 active:scale-98 transition-all duration-300",
+    outline: "border border-neutral-300 bg-white text-neutral-700 hover:border-gold-500 hover:text-gold-600 hover:bg-gold-50/20 active:scale-98 transition-all duration-300",
   };
 
   return (
@@ -104,7 +104,7 @@ export const Input: React.FC<{
       required={required}
       min={min}
       max={max}
-      className="px-3.5 py-2 text-sm text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-brand-teal transition-colors disabled:bg-slate-50 disabled:text-slate-400"
+      className="px-3.5 py-2 text-sm text-neutral-950 bg-white border border-neutral-300 rounded-lg outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500 transition-all duration-200 disabled:bg-neutral-50 disabled:text-slate-400"
     />
   </div>
 );
@@ -141,7 +141,7 @@ export const Select: React.FC<{
       onChange={onChange}
       disabled={disabled}
       required={required}
-      className="px-3 py-2 text-sm text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-brand-teal transition-colors disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer"
+      className="px-3 py-2 text-sm text-neutral-950 bg-white border border-neutral-300 rounded-lg outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500 transition-all duration-200 disabled:bg-neutral-50 disabled:text-slate-400 cursor-pointer"
     >
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
@@ -160,12 +160,12 @@ export const Badge: React.FC<{
   id?: string;
 }> = ({ children, variant = "neutral", className = "", id }) => {
   const styles = {
-    success: "bg-emerald-50 text-emerald-700 border-emerald-100",
-    danger: "bg-red-50 text-red-700 border-red-100",
-    warning: "bg-amber-50 text-amber-700 border-amber-100",
-    info: "bg-blue-50 text-blue-700 border-blue-100",
-    neutral: "bg-slate-50 text-slate-700 border-slate-100",
-    brand: "bg-cyan-50 text-brand-teal border-cyan-100",
+    success: "bg-emerald-50 text-emerald-800 border-emerald-250",
+    danger: "bg-red-50 text-red-800 border-red-200",
+    warning: "bg-amber-50 text-amber-800 border-amber-200",
+    info: "bg-gold-50 text-gold-800 border-gold-200",
+    neutral: "bg-neutral-50 text-neutral-700 border-neutral-200",
+    brand: "bg-neutral-950 text-gold-400 border-gold-500/40",
   };
 
   return (
@@ -194,10 +194,10 @@ export const Modal: React.FC<{
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 overflow-y-auto">
       <div
         id={id}
-        className={`bg-white rounded-xl shadow-xl border border-slate-100 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${className}`}
+        className={`bg-white rounded-xl shadow-2xl border border-neutral-200/90 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-300 ${className}`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 bg-neutral-50/50">
           <h3 className="text-base font-bold text-slate-800 font-display uppercase tracking-wider">
             {title}
           </h3>

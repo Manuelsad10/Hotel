@@ -6,8 +6,24 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-display: "Space Grotesk", var(--font-sans);
 
-  --color-brand-teal: #0f4c5c;
-  --color-brand-cyan: #0891b2;
+  --color-brand-teal: #d4af37;
+  --color-brand-cyan: #af843b;
+  
+  --color-gold-50: #fdfbf7;
+  --color-gold-100: #f5eedc;
+  --color-gold-200: #ead8b1;
+  --color-gold-300: #d8bc7f;
+  --color-gold-400: #c59b27;
+  --color-gold-500: #af843b;
+  --color-gold-600: #936b2d;
+  --color-gold-700: #745122;
+  --color-gold-800: #563b19;
+  --color-gold-900: #3c2912;
+  --color-gold-950: #22170a;
+
+  --color-luxury-black: #0e0e11;
+  --color-luxury-dark: #16161d;
+  --color-luxury-gray: #24242e;
 }
 
 @layer utilities {
